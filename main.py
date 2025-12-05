@@ -3,34 +3,37 @@ from discord import app_commands
 from discord.ext import commands
 import os
 from dotenv import load_dotenv
-import asyncpg # Librería para Base de Datos
-from keep_alive import keep_alive
+import asyncpg 
+from keep_alive import keep_alive 
 
-# Cargar variables
+# Cargar variables del archivo .env
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 DISBOARD_ID = 302050872383242240
 
+# Configuración de permisos
 intents = discord.Intents.default()
 intents.message_content = True 
 
 class Bot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix="!", intents=intents)
-        self.pool = None # Aquí guardaremos la conexión a la base de datos
+        self.pool = None # Aca guardaremos la conexión a la base de datos
 
     async def setup_hook(self):
         # Nos conectamos a la base de datos al iniciar
         try:
             self.pool = await asyncpg.create_pool(dsn=DATABASE_URL)
             
-            # Creamos la tabla si no existe (Magia SQL)
+            
             async with self.pool.acquire() as conn:
                 await conn.execute("""
                     CREATE TABLE IF NOT EXISTS bumps (
-                        user_id TEXT PRIMARY KEY,
-                        count INTEGER DEFAULT 0
+                        user_id TEXT,
+                        guild_id TEXT,
+                        count INTEGER DEFAULT 0,
+                        PRIMARY KEY (user_id, guild_id)
                     )
                 """)
             print("✅ Base de datos conectada y tabla verificada.")
@@ -46,10 +49,12 @@ bot = Bot()
 
 @bot.event
 async def on_message(message):
+    # Verificamos que el mensaje venga de DISBOARD
     if message.author.id == DISBOARD_ID:
         if message.interaction_metadata:
             usuario = message.interaction_metadata.user
             
+            # Verificamos si es un bump exitoso
             es_bump_valido = False
             for embed in message.embeds:
                 if (embed.description and "Bumped" in embed.description) or embed.image:
@@ -58,37 +63,38 @@ async def on_message(message):
 
             if es_bump_valido:
                 user_id = str(usuario.id)
+                guild_id = str(message.guild.id) 
                 
-                # QUERY SQL PROFESIONAL: "Upsert"
-                # Intenta insertar. Si ya existe el ID, actualiza sumando 1.
+                # QUERY SQL: Guardamos Usuario + Servidor
                 query = """
-                    INSERT INTO bumps (user_id, count) VALUES ($1, 1)
-                    ON CONFLICT (user_id) DO UPDATE SET count = bumps.count + 1
+                    INSERT INTO bumps (user_id, guild_id, count) VALUES ($1, $2, 1)
+                    ON CONFLICT (user_id, guild_id) DO UPDATE SET count = bumps.count + 1
                     RETURNING count
                 """
                 
-                # Ejecutamos la query
                 async with bot.pool.acquire() as conn:
-                    nuevo_total = await conn.fetchval(query, user_id)
+                    nuevo_total = await conn.fetchval(query, user_id, guild_id)
                 
-                await message.channel.send(f"📈 **Bump registrado** | {usuario.mention} tiene ahora {nuevo_total} bumps acumulados.")
+                await message.channel.send(f"📈 **Bump registrado** | {usuario.mention} tiene ahora {nuevo_total} bumps en este servidor.")
 
     await bot.process_commands(message)
 
-# --- COMANDO: RANKING (SQL) ---
-@bot.tree.command(name="ranking", description="Top 10 usuarios con más bumps")
+# --- COMANDO: RANKING (LOCAL POR SERVIDOR) ---
+@bot.tree.command(name="ranking", description="Top 10 usuarios con más bumps en este servidor")
 async def ranking(interaction: discord.Interaction):
-    # Pedimos a la base de datos los 10 mejores
-    query = "SELECT user_id, count FROM bumps ORDER BY count DESC LIMIT 10"
+    guild_id = str(interaction.guild_id)
+    
+    # Filtramos SOLO los bumps de este servidor (WHERE guild_id = $1)
+    query = "SELECT user_id, count FROM bumps WHERE guild_id = $1 ORDER BY count DESC LIMIT 10"
     
     async with bot.pool.acquire() as conn:
-        filas = await conn.fetch(query)
+        filas = await conn.fetch(query, guild_id)
 
     if not filas:
-        await interaction.response.send_message("📭 Aún no hay registros en la base de datos.", ephemeral=True)
+        await interaction.response.send_message("📭 Aún no hay registros en este servidor.", ephemeral=True)
         return
 
-    embed = discord.Embed(title="🏆 Ranking Global (En la Nube)", color=discord.Color.gold())
+    embed = discord.Embed(title=f"🏆 Ranking Local - {interaction.guild.name}", color=discord.Color.gold())
     texto_top = ""
     
     for i, fila in enumerate(filas):
@@ -101,17 +107,21 @@ async def ranking(interaction: discord.Interaction):
     embed.add_field(name="Top 10", value=texto_top, inline=False)
     await interaction.response.send_message(embed=embed)
 
-# --- COMANDO: MIS PUNTOS (SQL) ---
-@bot.tree.command(name="mispuntos", description="Mira tus estadísticas")
+# --- COMANDO: MIS PUNTOS (LOCAL) ---
+@bot.tree.command(name="mispuntos", description="Mira tus estadísticas en este servidor")
 async def mispuntos(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
-    query = "SELECT count FROM bumps WHERE user_id = $1"
+    guild_id = str(interaction.guild_id)
+
+    # Buscamos tus puntos SOLO en este servidor
+    query = "SELECT count FROM bumps WHERE user_id = $1 AND guild_id = $2"
     
     async with bot.pool.acquire() as conn:
-        cantidad = await conn.fetchval(query, user_id)
+        cantidad = await conn.fetchval(query, user_id, guild_id)
 
-    cantidad = cantidad or 0 # Si es None, es 0
-    await interaction.response.send_message(f"Hola {interaction.user.mention}, llevas **{cantidad} bumps** registrados en la nube.", ephemeral=True)
+    cantidad = cantidad or 0 
+    await interaction.response.send_message(f"Hola {interaction.user.mention}, llevas **{cantidad} bumps** en este servidor.", ephemeral=True)
 
+# Prendemos el servidor web falso y luego el bot
 keep_alive()
 bot.run(TOKEN)

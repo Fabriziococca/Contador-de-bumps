@@ -8,11 +8,11 @@ class SimpleHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"Bot is alive!")
 
-    # --- AGREGAR ESTA PARTE NUEVA ---
+    
     def do_HEAD(self):
         self.send_response(200)
         self.end_headers()
-    # --------------------------------
+    
 
 def run():
     port = int(os.environ.get('PORT', 8080))
