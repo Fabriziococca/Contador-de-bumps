@@ -4,6 +4,7 @@ from discord.ext import commands
 import os
 from dotenv import load_dotenv
 import asyncpg # Librería para Base de Datos
+from keep_alive import keep_alive
 
 # Cargar variables
 load_dotenv()
@@ -112,4 +113,5 @@ async def mispuntos(interaction: discord.Interaction):
     cantidad = cantidad or 0 # Si es None, es 0
     await interaction.response.send_message(f"Hola {interaction.user.mention}, llevas **{cantidad} bumps** registrados en la nube.", ephemeral=True)
 
+keep_alive()
 bot.run(TOKEN)
