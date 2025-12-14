@@ -1,12 +1,12 @@
-# Archivos de sistema y logs
+
 __pycache__/
 *.log
 
-# Archivos de entorno y secretos (IMPORTANTE)
+
 .env
 config.py
 TOKEN
 token.txt
 
-# Base de datos local (El JSON ya no lo subiremos porque usaremos la DB real)
+
 puntos_bump.json
