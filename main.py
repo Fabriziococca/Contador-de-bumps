@@ -4,6 +4,7 @@ import os
 from dotenv import load_dotenv
 import asyncpg
 import asyncio
+import time
 from keep_alive import keep_alive 
 
 load_dotenv()
@@ -43,6 +44,15 @@ class Bot(commands.Bot):
                         guild_id TEXT,
                         count INTEGER DEFAULT 0,
                         PRIMARY KEY (user_id, guild_id)
+                    )
+                """)
+                # También verificamos la tabla de tickets por las dudas
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS tickets (
+                        channel_id BIGINT PRIMARY KEY,
+                        user_id BIGINT,
+                        estado TEXT DEFAULT 'abierto',
+                        ultimo_mensaje TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
             print("✅ Base de datos y pool inicializados correctamente.")
@@ -92,7 +102,7 @@ async def on_ready():
     print("=======================================")
 
 if __name__ == '__main__':
-    # Mantenemos vivo el servidor flask
+    # Mantenemos vivo el servidor HTTP para Render
     keep_alive()
     
     if not TOKEN:
@@ -100,8 +110,31 @@ if __name__ == '__main__':
     elif not DATABASE_URL:
         print("❌ [CRITICAL] DATABASE_URL no encontrado en el archivo .env.")
     else:
-        try:
-            print("🚀 Iniciando el bot...")
-            bot.run(TOKEN)
-        except Exception as e:
-            print(f"❌ [CRITICAL] El bot falló durante la ejecución: {e}")
+        # LÓGICA DE REINTENTOS ANTI-CLOUDFLARE (Error 429/1015)
+        max_reintentos = 5
+        reintento_actual = 0
+        
+        while reintento_actual < max_reintentos:
+            try:
+                print(f"🚀 Iniciando el bot (Intento {reintento_actual + 1})...")
+                bot.run(TOKEN)
+                # Si bot.run termina normalmente (cosa que no debería), salimos del bucle
+                break
+            except discord.errors.HTTPException as e:
+                # El error 429 es Too Many Requests, típico de Cloudflare 1015
+                if e.status == 429:
+                    espera = (2 ** reintento_actual) * 30 # Espera progresiva (30s, 60s, 120s...)
+                    print(f"⚠️ [BLOQUEO] Cloudflare detectado (429). Reintentando en {espera} segundos...")
+                    time.sleep(espera)
+                    reintento_actual += 1
+                else:
+                    print(f"❌ [CRITICAL] Error de HTTP no manejado: {e}")
+                    break
+            except Exception as e:
+                print(f"❌ [CRITICAL] El bot falló por un error inesperado: {e}")
+                # Esperamos un poco antes de un reintento genérico
+                time.sleep(10)
+                reintento_actual += 1
+
+        if reintento_actual == max_reintentos:
+            print("💀 [FATAL] Se alcanzaron los reintentos máximos. La IP de Render está baneada por Cloudflare.")
