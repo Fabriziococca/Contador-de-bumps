@@ -71,7 +71,7 @@ class Tickets(commands.Cog):
             bienvenida = (
                 "¡Hola! Soy tu asistente de ventas automatizado. 🤖\n"
                 "Estoy aquí para ayudarte a obtener tu rango de forma rápida.\n\n"
-                "Ante cualquier falla del bot, incluso en un correcto uso, si ya pagaron pueden etiquetar a <@704501115110162542> para que revise manualmente y otorgue el rol si corresponde."
+                "Ante cualquier falla del bot, incluso en un correcto uso, si ya pagaron pueden etiquetar a @titocalderon para que revise manualmente y otorgue el rol si corresponde."
             )
             try:
                 await channel.send(bienvenida)
