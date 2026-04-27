@@ -63,23 +63,20 @@ class Tickets(commands.Cog):
 
     @commands.Cog.listener()
     async def on_guild_channel_create(self, channel):
-        """Lanza el mensaje de presentación y advertencia cuando se abre un ticket."""
+        """Lanza el mensaje de presentación suavizado después de un delay."""
         if isinstance(channel, discord.TextChannel) and channel.name.startswith("ticket-"):
-            # Esperamos un momento para que el mensaje de Ticket Tool quede arriba
-            await asyncio.sleep(1.5)
+            # Aumentamos el delay a 5 segundos para que Ticket Tool termine de enviar sus mensajes
+            await asyncio.sleep(5.0)
             
             bienvenida = (
                 "¡Hola! Soy tu asistente de ventas automatizado. 🤖\n"
                 "Estoy aquí para ayudarte a obtener tu rango de forma rápida.\n\n"
-                "⚠️ **ADVERTENCIA DE SEGURIDAD**:\n"
-                "El bot está entrenado para funcionar correctamente. Cualquier intento de bypassear "
-                "o engañar al sistema para obtener rangos gratis resultará en un **BAN permanente** del servidor.\n\n"
-                "Cada vez que entrego un rol, se notifica al administrador para que corrobore la transacción manualmente. "
-                "Si se detecta un intento de fraude o comprobante falso, serás expulsado de inmediato. "
-                "Gracias por los intentos de engaño, ya que cada error me ayuda a mejorar y entrenar mejor al sistema. 😎"
-                "Ante cualquier falla del bot incluso en un correcto uso, si ya pagaron pueden etiquetar a @titocalderon para que revise manualmente y otorgue el rol si corresponde."
+                "Ante cualquier falla del bot, incluso en un correcto uso, si ya pagaron pueden etiquetar a <@704501115110162542> para que revise manualmente y otorgue el rol si corresponde."
             )
-            await channel.send(bienvenida)
+            try:
+                await channel.send(bienvenida)
+            except Exception as e:
+                print(f"❌ [Error] No se pudo enviar bienvenida en {channel.name}: {e}")
 
     @commands.command(name="panic")
     async def panic_button(self, ctx):
