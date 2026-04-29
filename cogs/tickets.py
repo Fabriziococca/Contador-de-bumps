@@ -63,19 +63,70 @@ class Tickets(commands.Cog):
 
     @commands.Cog.listener()
     async def on_guild_channel_create(self, channel):
-        """Lanza el mensaje de presentación suavizado después de un delay."""
+        """Lanza el mensaje de presentación suavizado y el Mega-Embed de precios después de un delay."""
         if isinstance(channel, discord.TextChannel) and channel.name.startswith("ticket-"):
             # Aumentamos el delay a 5 segundos para que Ticket Tool termine de enviar sus mensajes
             await asyncio.sleep(5.0)
             
+            # Recreando el Embed Premium de Ticket Tool
+            embed = discord.Embed(
+                title="🛒 Zona de Compras", 
+                description="Elegí tu rango y mirá los datos de pago abajo.", 
+                color=0x2B2D31 # Color oscuro de Discord
+            )
+            embed.add_field(
+                name="📉 LISTA DE PRECIOS", 
+                value="💎 Rango Diamante: 🇦🇷 Argentina: $4.100 ARS 🌍 Internacional: $4 USD\n🥇 Rango Oro: 🇦🇷 Argentina: $3.700 ARS 🌍 Internacional: $3,5 USD\n🥈 Rango Plata: 🇦🇷 Argentina: $2.100 ARS 🌍 Internacional: $2 USD", 
+                inline=False
+            )
+            embed.add_field(name="Alias:", value="LENGUA.LUJOSA.TELAR", inline=False)
+            embed.add_field(name="CVU:", value="0000168300000013531308", inline=False)
+            embed.add_field(
+                name="🌍 DOLARES (PayPal) Enviar monto exacto a este correo:", 
+                value="sesarjavier28@gmail.com\n⚡ Pagando con USDT vía Binance Pay tenes un 10% de descuento ( Binance ID: 552346130 )", 
+                inline=False
+            )
+            embed.add_field(
+                name="✅ ¿Ya pagaste? Seguí estos pasos:", 
+                value="1. Aclara que rango o rangos estas comprando\n2. Envia el comprobante\n3. El bot entrega el rol correspondiente al instante\n\n❓ Si tenes dudas o problemas, etiqueta a @titocalderon y espera a recibir ayuda\n\n*(Si querés 2 o los 3 rangos juntos, podés transferir el total correspondiente según la combinación elegida.)*", 
+                inline=False
+            )
+
             bienvenida = (
                 "¡Hola! Soy tu asistente de ventas automatizado. 🤖\n"
                 "Estoy aquí para ayudarte a obtener tu rango de forma rápida.\n\n"
+                f"Ante cualquier falla del bot incluso en un correcto uso, si ya pagaron pueden etiquetar a <@{self.mi_id}> para que revise manualmente y otorgue el rol si corresponde."
             )
             try:
-                await channel.send(bienvenida)
+                # Enviamos el texto y el embed juntos
+                await channel.send(content=bienvenida, embed=embed)
             except Exception as e:
                 print(f"❌ [Error] No se pudo enviar bienvenida en {channel.name}: {e}")
+
+    @commands.Cog.listener()
+    async def on_member_remove(self, member):
+        """Automatización: Elimina los tickets si el usuario abandona el servidor."""
+        user_id = member.id
+        query = "SELECT channel_id FROM tickets WHERE user_id = $1"
+        try:
+            async with self.bot.pool.acquire(timeout=5.0) as conn:
+                records = await conn.fetch(query, user_id)
+                for record in records:
+                    channel_id = record['channel_id']
+                    channel = member.guild.get_channel(channel_id)
+                    if channel:
+                        try:
+                            await channel.delete(reason=f"Auto-Close: Usuario {member.name} abandonó el servidor.")
+                            print(f"🗑️ [Auto-Close] Ticket {channel_id} borrado porque el usuario se fue.")
+                        except discord.NotFound:
+                            pass
+                        except Exception as e:
+                            print(f"❌ [Error] al borrar ticket {channel_id}: {e}")
+                
+                # Limpiar registro en la base de datos
+                await conn.execute("DELETE FROM tickets WHERE user_id = $1", user_id)
+        except Exception as e:
+            print(f"❌ [DB Error] en on_member_remove: {e}")
 
     @commands.command(name="panic")
     async def panic_button(self, ctx):
@@ -359,34 +410,51 @@ Consulta actual del usuario: "{message.content}"
         except Exception as e:
             print(f"❌ [IA Support Error]: {e}")
 
-    # Tarea en loop cada 1 hora para limpieza de tickets completados tras 48hs
-    @tasks.loop(hours=1)
+    # Tarea en loop cada 30 minutos para limpieza de tickets (Completados 48hs y Abiertos inactivos 3hs)
+    @tasks.loop(minutes=30)
     async def cleanup_tickets(self):
-        # INTERVAL '48 hours' es compatible con PostgreSQL/NeonDB
-        query = """
+        query_completados = """
             SELECT channel_id FROM tickets 
             WHERE estado = 'completado' 
             AND ultimo_mensaje <= CURRENT_TIMESTAMP - INTERVAL '48 hours'
         """
+        query_abandonados = """
+            SELECT channel_id FROM tickets 
+            WHERE estado = 'abierto' 
+            AND ultimo_mensaje <= CURRENT_TIMESTAMP - INTERVAL '3 hours'
+        """
+        
         try:
             async with self.bot.pool.acquire(timeout=15.0) as conn:
-                records = await conn.fetch(query)
-                
-                for record in records:
+                # 1. Limpiar completados (48hs)
+                records_comp = await conn.fetch(query_completados)
+                for record in records_comp:
                     channel_id = int(record['channel_id'])
                     channel = self.bot.get_channel(channel_id)
-                    
                     if channel:
                         try:
                             await channel.delete(reason="Limpieza automática: 48hs tras ticket completado.")
-                            print(f"🗑️ [Limpieza] Canal de ticket {channel_id} eliminado.")
+                            print(f"🗑️ [Limpieza] Canal de ticket {channel_id} eliminado (48hs).")
                         except discord.Forbidden:
                             print(f"⚠️ [Limpieza] Sin permisos para borrar el canal {channel_id}.")
-                            continue
                         except discord.HTTPException as e:
                             print(f"❌ [Limpieza] Error HTTP al borrar {channel_id}: {e}")
-                            continue
+                    # Eliminar de la BD pasando el INT directamente
+                    await conn.execute("DELETE FROM tickets WHERE channel_id = $1", channel_id)
 
+                # 2. Limpiar abandonados (3hs sin mensaje)
+                records_aban = await conn.fetch(query_abandonados)
+                for record in records_aban:
+                    channel_id = int(record['channel_id'])
+                    channel = self.bot.get_channel(channel_id)
+                    if channel:
+                        try: 
+                            await channel.delete(reason="Auto-Close: 3 horas de inactividad del usuario.")
+                            print(f"🗑️ [Auto-Close] Ticket {channel_id} borrado por 3hs sin actividad.")
+                        except discord.Forbidden:
+                            print(f"⚠️ [Limpieza] Sin permisos para borrar el canal {channel_id}.")
+                        except discord.HTTPException as e:
+                            print(f"❌ [Limpieza] Error HTTP al borrar {channel_id}: {e}")
                     # Eliminar de la BD pasando el INT directamente
                     await conn.execute("DELETE FROM tickets WHERE channel_id = $1", channel_id)
                     

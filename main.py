@@ -14,6 +14,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 # Intents necesarios para leer el contenido de los mensajes
 intents = discord.Intents.default()
 intents.message_content = True 
+intents.members = True
 
 class Bot(commands.Bot):
     def __init__(self):
