@@ -95,7 +95,7 @@ class Tickets(commands.Cog):
             bienvenida = (
                 "¡Hola! Soy tu asistente de ventas automatizado. 🤖\n"
                 "Estoy aquí para ayudarte a obtener tu rango de forma rápida.\n\n"
-                f"Ante cualquier falla del bot incluso en un correcto uso, si ya pagaron pueden etiquetar a <@{self.mi_id}> para que revise manualmente y otorgue el rol si corresponde."
+        
             )
             try:
                 # Enviamos el texto y el embed juntos
