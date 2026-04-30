@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands, tasks
+from discord import app_commands
 import asyncpg
 import asyncio
 import os
@@ -45,12 +46,18 @@ class Tickets(commands.Cog):
                 channel_id BIGINT PRIMARY KEY,
                 user_id BIGINT,
                 estado TEXT DEFAULT 'abierto',
-                ultimo_mensaje TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                ultimo_mensaje TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                hablo BOOLEAN DEFAULT FALSE
             )
         """
         try:
             async with self.bot.pool.acquire(timeout=10.0) as conn:
                 await conn.execute(query)
+                # Añadimos la columna 'hablo' si es que la tabla ya existía de antes
+                try:
+                    await conn.execute("ALTER TABLE tickets ADD COLUMN hablo BOOLEAN DEFAULT FALSE")
+                except asyncpg.PostgresError:
+                    pass # Si tira error es porque la columna ya existe, no pasa nada
             print("✅ [Tickets] Tabla verificada/creada exitosamente.")
         except Exception as e:
             print(f"❌ [DB Error] Error al crear la tabla tickets: {e}")
@@ -67,6 +74,27 @@ class Tickets(commands.Cog):
         if isinstance(channel, discord.TextChannel) and channel.name.startswith("ticket-"):
             # Aumentamos el delay a 5 segundos para que Ticket Tool termine de enviar sus mensajes
             await asyncio.sleep(5.0)
+
+            # --- REGISTRO INICIAL EN DB ---
+            # Buscamos al dueño del ticket en los permisos del canal para empezar el reloj de 3hs
+            user_id = None
+            for target in channel.overwrites:
+                if isinstance(target, discord.Member) and not target.bot:
+                    user_id = target.id
+                    break
+            
+            if user_id:
+                try:
+                    async with self.bot.pool.acquire(timeout=5.0) as conn:
+                        await conn.execute("INSERT INTO usuarios (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING", user_id)
+                        await conn.execute("""
+                            INSERT INTO tickets (channel_id, user_id, estado, ultimo_mensaje, hablo)
+                            VALUES ($1, $2, 'abierto', CURRENT_TIMESTAMP, FALSE)
+                            ON CONFLICT (channel_id) DO NOTHING
+                        """, channel.id, user_id)
+                except Exception as e:
+                    print(f"❌ [DB Error] No se pudo registrar ticket inicial {channel.id}: {e}")
+            # ------------------------------
             
             # Recreando el Embed Premium de Ticket Tool
             embed = discord.Embed(
@@ -128,17 +156,20 @@ class Tickets(commands.Cog):
         except Exception as e:
             print(f"❌ [DB Error] en on_member_remove: {e}")
 
-    @commands.command(name="panic")
-    async def panic_button(self, ctx):
-        # ID estricto: Solo vos podés apretar este botón
-        if ctx.author.id != 696515814526681088:
+    @app_commands.command(name="manual", description="Apaga la IA en este ticket para hablar manualmente con el cliente")
+    @app_commands.default_permissions(administrator=True) # Exclusivo para admins
+    async def modo_manual(self, interaction: discord.Interaction):
+        if not hasattr(interaction.channel, 'name') or not interaction.channel.name.startswith("ticket-"):
+            await interaction.response.send_message("⚠️ Este comando solo se puede usar dentro de un ticket.", ephemeral=True)
             return
-            
-        await ctx.send("🚨 **SISTEMA DE EMERGENCIA ACTIVADO.**\nCortando conexiones a la base de datos y apagando el bot inmediatamente...")
-        print("🚨 [KILL-SWITCH] Activado por el dueño. Cerrando bot...")
-        
-        # Cierra la conexión y apaga el bot
-        await self.bot.close()
+
+        try:
+            async with self.bot.pool.acquire(timeout=5.0) as conn:
+                await conn.execute("UPDATE tickets SET estado = 'pausado' WHERE channel_id = $1", interaction.channel.id)
+            await interaction.response.send_message("🛑 **Modo Manual Activado.**\nLa IA ha sido apagada en este ticket. Podés hablar con el cliente tranquilamente sin que el bot intervenga.")
+        except Exception as e:
+            print(f"❌ [DB Error] al pausar ticket {interaction.channel.id}: {e}")
+            await interaction.response.send_message("❌ Hubo un error al intentar pausar la IA.", ephemeral=True)
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -148,6 +179,15 @@ class Tickets(commands.Cog):
         # Solo escuchar en canales que empiecen con 'ticket-'
         if not hasattr(message.channel, 'name') or not message.channel.name.startswith("ticket-"):
             return
+
+        # 0. Verificamos si la IA fue apagada en este ticket (Modo Manual)
+        try:
+            async with self.bot.pool.acquire(timeout=5.0) as conn:
+                estado_ticket = await conn.fetchval("SELECT estado FROM tickets WHERE channel_id = $1", message.channel.id)
+                if estado_ticket == 'pausado':
+                    return # No hacemos nada, el bot ignora este canal
+        except Exception:
+            pass
 
         # --- LÓGICA DE MENCIONES (Titocalderon o Bot) ---
         # Si mencionan al bot o a vos, responde de forma atenta
@@ -174,7 +214,7 @@ class Tickets(commands.Cog):
                     return
         # --------------------------------------
 
-        # 1. Registrar actividad en la base de datos
+        # 1. Registrar actividad en la base de datos (marcando que el usuario ya habló)
         await self._update_ticket_activity(message)
 
         # 2. Detección de Comprobantes (Mensajes con imágenes)
@@ -203,10 +243,10 @@ class Tickets(commands.Cog):
                 await conn.execute("INSERT INTO usuarios (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING", user_id)
                 
                 query = """
-                    INSERT INTO tickets (channel_id, user_id, estado, ultimo_mensaje)
-                    VALUES ($1, $2, 'abierto', CURRENT_TIMESTAMP)
+                    INSERT INTO tickets (channel_id, user_id, estado, ultimo_mensaje, hablo)
+                    VALUES ($1, $2, 'abierto', CURRENT_TIMESTAMP, TRUE)
                     ON CONFLICT (channel_id) DO UPDATE 
-                    SET ultimo_mensaje = CURRENT_TIMESTAMP
+                    SET ultimo_mensaje = CURRENT_TIMESTAMP, hablo = TRUE
                 """
                 await conn.execute(query, channel_id, user_id)
         except Exception as e:
@@ -410,7 +450,7 @@ Consulta actual del usuario: "{message.content}"
         except Exception as e:
             print(f"❌ [IA Support Error]: {e}")
 
-    # Tarea en loop cada 30 minutos para limpieza de tickets (Completados 48hs y Abiertos inactivos 3hs)
+    # Tarea en loop cada 30 minutos para limpieza de tickets
     @tasks.loop(minutes=30)
     async def cleanup_tickets(self):
         query_completados = """
@@ -418,10 +458,15 @@ Consulta actual del usuario: "{message.content}"
             WHERE estado = 'completado' 
             AND ultimo_mensaje <= CURRENT_TIMESTAMP - INTERVAL '48 hours'
         """
-        query_abandonados = """
+        query_abandonados_3h = """
             SELECT channel_id FROM tickets 
-            WHERE estado = 'abierto' 
+            WHERE estado = 'abierto' AND hablo = FALSE
             AND ultimo_mensaje <= CURRENT_TIMESTAMP - INTERVAL '3 hours'
+        """
+        query_abandonados_24h = """
+            SELECT channel_id FROM tickets 
+            WHERE estado IN ('abierto', 'pausado') AND hablo = TRUE
+            AND ultimo_mensaje <= CURRENT_TIMESTAMP - INTERVAL '24 hours'
         """
         
         try:
@@ -436,26 +481,39 @@ Consulta actual del usuario: "{message.content}"
                             await channel.delete(reason="Limpieza automática: 48hs tras ticket completado.")
                             print(f"🗑️ [Limpieza] Canal de ticket {channel_id} eliminado (48hs).")
                         except discord.Forbidden:
-                            print(f"⚠️ [Limpieza] Sin permisos para borrar el canal {channel_id}.")
-                        except discord.HTTPException as e:
-                            print(f"❌ [Limpieza] Error HTTP al borrar {channel_id}: {e}")
-                    # Eliminar de la BD pasando el INT directamente
+                            pass
+                        except discord.HTTPException:
+                            pass
                     await conn.execute("DELETE FROM tickets WHERE channel_id = $1", channel_id)
 
-                # 2. Limpiar abandonados (3hs sin mensaje)
-                records_aban = await conn.fetch(query_abandonados)
-                for record in records_aban:
+                # 2. Limpiar abandonados (3hs sin mensaje inicial)
+                records_aban3h = await conn.fetch(query_abandonados_3h)
+                for record in records_aban3h:
                     channel_id = int(record['channel_id'])
                     channel = self.bot.get_channel(channel_id)
                     if channel:
                         try: 
-                            await channel.delete(reason="Auto-Close: 3 horas de inactividad del usuario.")
-                            print(f"🗑️ [Auto-Close] Ticket {channel_id} borrado por 3hs sin actividad.")
+                            await channel.delete(reason="Auto-Close: 3 horas de inactividad total desde creación.")
+                            print(f"🗑️ [Auto-Close] Ticket {channel_id} borrado por 3hs sin actividad inicial.")
                         except discord.Forbidden:
-                            print(f"⚠️ [Limpieza] Sin permisos para borrar el canal {channel_id}.")
-                        except discord.HTTPException as e:
-                            print(f"❌ [Limpieza] Error HTTP al borrar {channel_id}: {e}")
-                    # Eliminar de la BD pasando el INT directamente
+                            pass
+                        except discord.HTTPException:
+                            pass
+                    await conn.execute("DELETE FROM tickets WHERE channel_id = $1", channel_id)
+                    
+                # 3. Limpiar abandonados (24hs inactividad luego de hablar)
+                records_aban24h = await conn.fetch(query_abandonados_24h)
+                for record in records_aban24h:
+                    channel_id = int(record['channel_id'])
+                    channel = self.bot.get_channel(channel_id)
+                    if channel:
+                        try: 
+                            await channel.delete(reason="Auto-Close: 24 horas de inactividad después de hablar.")
+                            print(f"🗑️ [Auto-Close] Ticket {channel_id} borrado por 24hs inactividad posterior.")
+                        except discord.Forbidden:
+                            pass
+                        except discord.HTTPException:
+                            pass
                     await conn.execute("DELETE FROM tickets WHERE channel_id = $1", channel_id)
                     
         except asyncpg.PostgresError as e:
