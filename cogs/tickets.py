@@ -23,8 +23,8 @@ RESPUESTAS_PREDEFINIDAS = {
     "entrega?": "La entrega es inmediata tras la validación automática de tu comprobante de pago.",
     "gracias bot": "¡De nada! Aquí estaré si necesitas algo más.",
     "gracias": "¡De nada! Aquí estaré si necesitas algo más.",
-    "adios bot": "¡Hasta luego! El ticket se cerrará automáticamente en 48hs si no hay más actividad.",
-    "adios": "¡Hasta luego! El ticket se cerrará automáticamente en 48hs si no hay más actividad."
+    "adios bot": "¡Hasta luego! El ticket se cerrará automáticamente en 24hs si no hay más actividad.",
+    "adios": "¡Hasta luego! El ticket se cerrará automáticamente en 24hs si no hay más actividad."
 }
 
 class Tickets(commands.Cog):
@@ -41,7 +41,7 @@ class Tickets(commands.Cog):
 
     async def cog_load(self):
         # Crear la tabla de tickets en NeonDB asegurando el uso de BIGINT para IDs
-        query = """
+        query_tickets = """
             CREATE TABLE IF NOT EXISTS tickets (
                 channel_id BIGINT PRIMARY KEY,
                 user_id BIGINT,
@@ -50,17 +50,29 @@ class Tickets(commands.Cog):
                 hablo BOOLEAN DEFAULT FALSE
             )
         """
+        # Crear tabla de pagos
+        query_pagos = """
+            CREATE TABLE IF NOT EXISTS pagos (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT,
+                monto NUMERIC,
+                moneda TEXT,
+                rol TEXT,
+                fecha TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            )
+        """
         try:
             async with self.bot.pool.acquire(timeout=10.0) as conn:
-                await conn.execute(query)
+                await conn.execute(query_tickets)
+                await conn.execute(query_pagos)
                 # Añadimos la columna 'hablo' si es que la tabla ya existía de antes
                 try:
                     await conn.execute("ALTER TABLE tickets ADD COLUMN hablo BOOLEAN DEFAULT FALSE")
                 except asyncpg.PostgresError:
                     pass # Si tira error es porque la columna ya existe, no pasa nada
-            print("✅ [Tickets] Tabla verificada/creada exitosamente.")
+            print("✅ [Tickets & Pagos] Tablas verificadas/creadas exitosamente.")
         except Exception as e:
-            print(f"❌ [DB Error] Error al crear la tabla tickets: {e}")
+            print(f"❌ [DB Error] Error al crear las tablas: {e}")
             
         # Iniciar la limpieza periódica
         self.cleanup_tickets.start()
@@ -72,16 +84,19 @@ class Tickets(commands.Cog):
     async def on_guild_channel_create(self, channel):
         """Lanza el mensaje de presentación suavizado y el Mega-Embed de precios después de un delay."""
         if isinstance(channel, discord.TextChannel) and channel.name.startswith("ticket-"):
-            # Aumentamos el delay a 5 segundos para que Ticket Tool termine de enviar sus mensajes
-            await asyncio.sleep(5.0)
+            # Aumentamos el delay a 10 segundos para dar tiempo a que Ticket Tool asigne permisos al usuario
+            await asyncio.sleep(10.0)
+            
+            channel = channel.guild.get_channel(channel.id)
 
             # --- REGISTRO INICIAL EN DB ---
             # Buscamos al dueño del ticket en los permisos del canal para empezar el reloj de 3hs
             user_id = None
-            for target in channel.overwrites:
-                if isinstance(target, discord.Member) and not target.bot:
-                    user_id = target.id
-                    break
+            if channel:
+                for target in channel.overwrites:
+                    if isinstance(target, discord.Member) and not target.bot:
+                        user_id = target.id
+                        break
             
             if user_id:
                 try:
@@ -116,18 +131,18 @@ class Tickets(commands.Cog):
             )
             embed.add_field(
                 name="✅ ¿Ya pagaste? Seguí estos pasos:", 
-                value="1. Aclara que rango o rangos estas comprando\n2. Envia el comprobante\n3. El bot entrega el rol correspondiente al instante\n\n❓ Si tenes dudas o problemas, etiqueta a @titocalderon y espera a recibir ayuda\n\n*(Si querés 2 o los 3 rangos juntos, podés transferir el total correspondiente según la combinación elegida.)*", 
+                value="1. Aclara que rango o rangos estas comprando\n2. Envia el comprobante (Foto o PDF)\n3. El bot entrega el rol correspondiente al instante\n\n❓ Si tenes dudas o problemas, etiqueta a @titocalderon y espera a recibir ayuda\n\n*(Si querés 2 o los 3 rangos juntos, podés transferir el total correspondiente según la combinación elegida.)*", 
                 inline=False
             )
 
             bienvenida = (
                 "¡Hola! Soy tu asistente de ventas automatizado. 🤖\n"
                 "Estoy aquí para ayudarte a obtener tu rango de forma rápida.\n\n"
-        
             )
             try:
                 # Enviamos el texto y el embed juntos
-                await channel.send(content=bienvenida, embed=embed)
+                if channel:
+                    await channel.send(content=bienvenida, embed=embed)
             except Exception as e:
                 print(f"❌ [Error] No se pudo enviar bienvenida en {channel.name}: {e}")
 
@@ -175,6 +190,10 @@ class Tickets(commands.Cog):
     async def on_message(self, message: discord.Message):
         if message.author.bot:
             return
+            
+        # Ignoramos si el mensaje empieza con / para no interferir con comandos de barra
+        if message.content.startswith('/'):
+            return
 
         # Solo escuchar en canales que empiecen con 'ticket-'
         if not hasattr(message.channel, 'name') or not message.channel.name.startswith("ticket-"):
@@ -217,9 +236,9 @@ class Tickets(commands.Cog):
         # 1. Registrar actividad en la base de datos (marcando que el usuario ya habló)
         await self._update_ticket_activity(message)
 
-        # 2. Detección de Comprobantes (Mensajes con imágenes)
-        has_image = any(att.content_type and att.content_type.startswith('image/') for att in message.attachments)
-        if message.attachments and has_image:
+        # 2. Detección de Comprobantes (Mensajes con imágenes o PDF)
+        has_valid_attachment = any(att.content_type and (att.content_type.startswith('image/') or att.content_type == 'application/pdf') for att in message.attachments)
+        if message.attachments and has_valid_attachment:
             await self.handle_receipt_image(message)
             return
 
@@ -253,15 +272,15 @@ class Tickets(commands.Cog):
             print(f"❌ [DB Error] No se pudo actualizar actividad de ticket {channel_id}: {e}")
 
     async def handle_receipt_image(self, message: discord.Message):
-        # Extraer el adjunto de imagen
-        attachment = next((a for a in message.attachments if a.content_type.startswith('image/')), None)
+        # Extraer el adjunto de imagen o PDF
+        attachment = next((a for a in message.attachments if a.content_type.startswith('image/') or a.content_type == 'application/pdf'), None)
         if not attachment:
             return
             
         advertencia = await message.channel.send("⏳ **Auditoría IA**: Analizando comprobante de pago...")
 
         try:
-            # Descargar imagen nativamente usando discord.py
+            # Descargar imagen/pdf nativamente usando discord.py
             image_data = await attachment.read()
             image_parts = [{"mime_type": attachment.content_type, "data": image_data}]
 
@@ -277,9 +296,9 @@ class Tickets(commands.Cog):
 Contexto reciente del chat (puede contener el rol deseado o aclarar montos parciales):
 {contexto}
 
-SOS UN AUDITOR FINANCIERO ESTRICTO. Analizá esta imagen para validar si es un comprobante de transferencia COMPLETADO (ej: Mercado Pago, Banco, PayPal).
+SOS UN AUDITOR FINANCIERO ESTRICTO. Analizá esta imagen o PDF para validar si es un comprobante de transferencia COMPLETADO (ej: Mercado Pago, Banco, PayPal).
+REGLA CRÍTICA Y ESTRICTA: Debes verificar OBLIGATORIAMENTE que el destinatario de la transferencia sea 'Fabrizio Giovanni Cocca Ducay' (o Fabrizio Cocca). Si logras leer el nombre del destinatario y es otra persona (por ejemplo, le están transfiriendo a un amigo u otro nombre), marca "es_comprobante": false.
 REGLA 1: Buscá evidencia de que el pago finalizó (ej: "Transferencia exitosa", "Pago realizado"). Ignorá capturas de 'pre-transferencia' o pantallas de confirmación sin ejecutar.
-REGLA 2: A veces la gente pregunta a nombre de quien es la transferencia, si preguntan es a nombre de Fabrizio Giovanni Cocca Ducay (no lo digas porque si, decilo solo si el usuario lo menciona o pregunta explícitamente, por ej: si pregunta es a nombre de Fabrizio... ahi les decis que si y nada mas, no lo digas antes ni nada).
 REGLA 2: Si el formato numérico usa coma para miles (ej 4,100.00), convertilo a un número limpio (4100).
 REGLA 3 DE MONTO RANDOM: 
 - Si el monto NO coincide exactamente con un rango o combo, pero el usuario ESPECIFICÓ uno en el contexto, validalo contra ese.
@@ -324,7 +343,7 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
 
             # Validaciones de negocio
             if not datos.get("es_comprobante"):
-                await advertencia.edit(content="❌ **Auditoría Fallida**: La imagen no parece ser un comprobante de pago válido o es ilegible.")
+                await advertencia.edit(content="❌ **Auditoría Fallida**: No es válido, puede ser un fallo del bot, enviá la foto porfa y ahí vemos qué pasó.")
                 return
 
             if datos.get("necesita_preguntar"):
@@ -372,8 +391,20 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
                 
                 await advertencia.edit(content=msg_exito)
                 
-                # Marcar en NeonDB como completado enviando el ID como entero
+                # Marcar en NeonDB como completado
                 await self._marcar_ticket_completado(message.channel.id)
+
+                # Registrar el pago exitoso en la nueva tabla 'pagos'
+                try:
+                    async with self.bot.pool.acquire(timeout=5.0) as conn:
+                        monto_num = float(datos.get('monto', 0))
+                        moneda_str = datos.get('moneda', 'ARS')
+                        await conn.execute(
+                            "INSERT INTO pagos (user_id, monto, moneda, rol) VALUES ($1, $2, $3, $4)",
+                            message.author.id, monto_num, moneda_str, rol
+                        )
+                except Exception as e:
+                    print(f"❌ [DB Error] No se pudo registrar el pago en la tabla 'pagos': {e}")
                 
             except discord.Forbidden:
                 await advertencia.edit(content="❌ **Error de Permisos**: No tengo los permisos de jerarquía necesarios para asignar el rol.")
@@ -445,6 +476,17 @@ Consulta actual del usuario: "{message.content}"
                             await message.channel.send(f"✅ Sistema: Rol **{rol_nombre}** asignado tras aclaración.\n🔔 <@704501115110162542> auditoría manual/aclaración completada.")
                             await self._marcar_ticket_completado(message.channel.id)
 
+                            # Registrar el pago exitoso en la tabla 'pagos' por aclaración manual de IA
+                            try:
+                                async with self.bot.pool.acquire(timeout=5.0) as conn:
+                                    monto_estimado = ROLES[rol_nombre]["ars"] 
+                                    await conn.execute(
+                                        "INSERT INTO pagos (user_id, monto, moneda, rol) VALUES ($1, $2, $3, $4)",
+                                        message.author.id, monto_estimado, "ARS", rol_nombre
+                                    )
+                            except Exception as e:
+                                print(f"❌ [DB Error] No se pudo registrar el pago aclarado en la tabla 'pagos': {e}")
+
         except asyncio.TimeoutError:
             await message.reply("⚠️ La IA de soporte está congestionada, intenta preguntar de nuevo.")
         except Exception as e:
@@ -453,16 +495,18 @@ Consulta actual del usuario: "{message.content}"
     # Tarea en loop cada 30 minutos para limpieza de tickets
     @tasks.loop(minutes=30)
     async def cleanup_tickets(self):
+        # MODIFICADO: Completados a las 24hs
         query_completados = """
             SELECT channel_id FROM tickets 
             WHERE estado = 'completado' 
-            AND ultimo_mensaje <= CURRENT_TIMESTAMP - INTERVAL '48 hours'
+            AND ultimo_mensaje <= CURRENT_TIMESTAMP - INTERVAL '24 hours'
         """
         query_abandonados_3h = """
             SELECT channel_id FROM tickets 
             WHERE estado = 'abierto' AND hablo = FALSE
             AND ultimo_mensaje <= CURRENT_TIMESTAMP - INTERVAL '3 hours'
         """
+        # MODIFICADO: Inactivos a las 24hs (si habían hablado)
         query_abandonados_24h = """
             SELECT channel_id FROM tickets 
             WHERE estado IN ('abierto', 'pausado') AND hablo = TRUE
@@ -471,15 +515,15 @@ Consulta actual del usuario: "{message.content}"
         
         try:
             async with self.bot.pool.acquire(timeout=15.0) as conn:
-                # 1. Limpiar completados (48hs)
+                # 1. Limpiar completados (24hs)
                 records_comp = await conn.fetch(query_completados)
                 for record in records_comp:
                     channel_id = int(record['channel_id'])
                     channel = self.bot.get_channel(channel_id)
                     if channel:
                         try:
-                            await channel.delete(reason="Limpieza automática: 48hs tras ticket completado.")
-                            print(f"🗑️ [Limpieza] Canal de ticket {channel_id} eliminado (48hs).")
+                            await channel.delete(reason="Limpieza automática: 24hs tras ticket completado.")
+                            print(f"🗑️ [Limpieza] Canal de ticket {channel_id} eliminado (24hs completado).")
                         except discord.Forbidden:
                             pass
                         except discord.HTTPException:
