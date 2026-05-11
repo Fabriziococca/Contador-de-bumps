@@ -8,6 +8,7 @@ import json
 import google.generativeai as genai
 from google.api_core.exceptions import GoogleAPIError
 import re
+import random # Agregado para la rotación de API Keys
 
 # Configuración de Roles y Precios estricta
 ROLES = {
@@ -32,12 +33,12 @@ class Tickets(commands.Cog):
         self.bot = bot
         self.mi_id = 704501115110162542 # Tu ID de usuario para detección de menciones
         
-        # Setup de IA con Gemini
-        api_key = os.getenv("GEMINI_API_KEY")
-        if api_key:
-            genai.configure(api_key=api_key)
+        # Setup Multi-API Key para evitar saturación
+        self.api_keys = [os.environ.get(k) for k in os.environ.keys() if k.startswith("GEMINI_API_KEY") and os.environ.get(k)]
+        if not self.api_keys:
+            print("⚠️ [ADVERTENCIA] No se encontraron variables GEMINI_API_KEY en .env o Render.")
         else:
-            print("⚠️ [ADVERTENCIA] GEMINI_API_KEY no encontrada en .env")
+            print(f"✅ Se cargaron {len(self.api_keys)} API Keys de Gemini. Rotación activada.")
 
     async def cog_load(self):
         # Crear la tabla de tickets en NeonDB asegurando el uso de BIGINT para IDs
@@ -297,7 +298,7 @@ Contexto reciente del chat (puede contener el rol deseado o aclarar montos parci
 {contexto}
 
 SOS UN AUDITOR FINANCIERO ESTRICTO. Analizá esta imagen o PDF para validar si es un comprobante de transferencia COMPLETADO (ej: Mercado Pago, Banco, PayPal).
-REGLA CRÍTICA Y ESTRICTA: Debes verificar OBLIGATORIAMENTE que el destinatario de la transferencia sea 'Fabrizio Giovanni Cocca Ducay' (o Fabrizio Cocca). Si logras leer el nombre del destinatario y es otra persona (por ejemplo, le están transfiriendo a un amigo u otro nombre), marca "es_comprobante": false.
+REGLA CRÍTICA Y ESTRICTA: Debes verificar OBLIGATORIAMENTE que el destinatario de la transferencia sea 'Fabrizio Giovanni Cocca Ducay' (o Fabrizio Cocca), O que el correo destinatario sea 'sesarjavier28@gmail.com' (para el caso de PayPal). Si logras leer el nombre o correo del destinatario y es otra persona (por ejemplo, le están transfiriendo a un amigo u otro nombre), marca "es_comprobante": false.
 REGLA 1: Buscá evidencia de que el pago finalizó (ej: "Transferencia exitosa", "Pago realizado"). Ignorá capturas de 'pre-transferencia' o pantallas de confirmación sin ejecutar.
 REGLA 2: Si el formato numérico usa coma para miles (ej 4,100.00), convertilo a un número limpio (4100).
 REGLA 3 DE MONTO RANDOM: 
@@ -317,7 +318,7 @@ REGLA 5: TUS DATOS DE COBRO (NUNCA INVENTES OTROS):
 - PayPal (USD): sesarjavier28@gmail.com
 - Binance Pay ID (USDT - 10% OFF): 552346130
 - Titular: Fabrizio Giovanni Cocca Ducay (o Fabrizio Cocca)
-REGLA 6: RESPUESTAS CORTAS: Respondé SIEMPRE a lo que se te pregunta y pide, podes dar algun que otro detalle util y adicional que consideres pero tampoco tanto. Sé directo, servicial y al grano. No uses lenguaje robótico ni des discursos largos.
+REGLA 6: RESPUESTAS CORTAS: Respondé SIEMPRE a lo que se te pregunta y pide. Sé directo, servicial y al grano. No uses lenguaje robótico ni des discursos largos.
 
 Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses markdown ni comillas invertidas):
 {{
@@ -330,6 +331,10 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
   "necesita_preguntar": true_o_false
 }}
 """
+            # Implementamos Rotación de API Keys
+            if self.api_keys:
+                genai.configure(api_key=random.choice(self.api_keys))
+                
             # Ejecutar modelo forzando exactamente gemini-flash-latest
             model = genai.GenerativeModel('gemini-flash-latest')
             
@@ -446,25 +451,37 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
         contexto_previo = "\n".join(historial)
 
         prompt = f"""
-Actúa como un asistente de ventas de Discord. Tu objetivo es cerrar la entrega de rangos.
+Actúa como un asistente de ventas de Discord para ayudar al usuario a realizar su pago y cerrar la compra.
 HISTORIAL DE CONVERSACIÓN:
 {contexto_previo}
 
-REGLAS DE NEGOCIO Y RESPUESTA:
-1. ARGUMENTO GOOGLE: Si el usuario dice que el contenido está gratis en Google o internet, responde que muchas chicas poco conocidas no aparecen ahí. Explica que el beneficio principal NO es solo el contenido, sino la COMODIDAD y el AHORRO DE TIEMPO: +200 canales ordenados en un solo lugar, a 2 clicks, sin anuncios, sin virus y todo centralizado de forma segura en Discord.
-2. PRECIOS: Diamante ($4100 ARS), Oro ($3700 ARS), Plata ($2100 ARS). Rangos independientes. Dilos SOLO UNA VEZ al inicio o si el usuario pregunta explícitamente. NO los repitas constantemente como un loro.
-3. SEGURIDAD CRÍTICA (ZERO TRUST): TIENES TOTALMENTE PROHIBIDO usar el comando [GRANT_ROLE] basándote únicamente en la palabra del usuario.
-   - Si el usuario dice "ya pagué", "ya transferí", etc., exígele que envíe la imagen o archivo del comprobante por este medio.
-   - SOLO puedes usar el comando si ves en el HISTORIAL que el sistema (el bot) ya validó físicamente una imagen enviando el mensaje de éxito y confirmando la asignación o el saldo disponible.
-4. FUNCIONAMIENTO DE RANGOS (ESTRICTO): Los rangos NO son acumulativos ni desbloquean todo el servidor. El rango Diamante SOLO desbloquea el contenido Diamante. El rango Oro SOLO desbloquea Oro. El rango Plata SOLO desbloquea Plata. Si un usuario pregunta si un rango desbloquea "todos" los canales, tenés totalmente PROHIBIDO decirle que sí. Aclará explícitamente que cada rango da acceso ÚNICAMENTE a su propia categoría, a menos que el usuario pague por una combinación de rangos (ej: Diamante + Oro).
+TUS DATOS DE COBRO ESTRICTOS (NUNCA INVENTES OTROS):
+- Alias (MercadoPago/Bancos ARS): LENGUA.LUJOSA.TELAR
+- CVU: 0000168300000013531308
+- PayPal (USD): sesarjavier28@gmail.com
+- Binance Pay ID (USDT - 10% OFF): 552346130
+- Titular: Fabrizio Giovanni Cocca Ducay
+
+REGLAS DE NEGOCIO Y RESPUESTA (ESTRICTAS):
+1. PRECIOS: Diamante ($4100 ARS / $4 USD), Oro ($3700 ARS / $3.5 USD), Plata ($2100 ARS / $2 USD). NUNCA des otros precios ni alucines valores.
+2. RESPUESTAS CORTAS Y DIRECTAS: Respondé siempre en máximo 1 o 2 párrafos cortos (no más de 40 palabras). Sé directo y al grano, nada de discursos largos.
+3. ARGUMENTO GOOGLE: Si dicen que está gratis en Google, respondé brevemente sobre la COMODIDAD y AHORRO DE TIEMPO: +200 canales ordenados, sin virus ni anuncios.
+4. SEGURIDAD CRÍTICA (ZERO TRUST): TIENES TOTALMENTE PROHIBIDO usar el comando [GRANT_ROLE] basándote únicamente en la palabra del usuario.
+   - Si el usuario dice "ya pagué", exígele que envíe la imagen o archivo del comprobante por este medio.
+   - SOLO puedes usar el comando si ves en el HISTORIAL que el sistema (el bot) ya validó físicamente una imagen.
+5. FUNCIONAMIENTO DE RANGOS: Diamante SOLO desbloquea Diamante. Oro SOLO Oro. Plata SOLO Plata. (Aclará esto solo si te preguntan si incluye los otros).
 
 INSTRUCCIÓN TÉCNICA:
 Si (y solo si) un pago previo fue validado por el sistema en el historial y el usuario aclara el rango que cubre ese pago, incluye al FINAL de tu respuesta este comando exacto: [GRANT_ROLE: NombreDelRol] (reemplaza NombreDelRol por Diamante, Oro o Plata).
-Si no hay validación previa de imagen en el historial o falta dinero, pide el comprobante o explica la situación sin incluir el comando.
+Si no hay validación previa de imagen en el historial o falta dinero, pide el comprobante o responde la duda sin incluir el comando.
 
 Consulta actual del usuario: "{message.content}"
 """
         try:
+            # Implementamos Rotación de API Keys
+            if self.api_keys:
+                genai.configure(api_key=random.choice(self.api_keys))
+
             async with message.channel.typing():
                 model = genai.GenerativeModel('gemini-flash-latest')
                 response = await asyncio.wait_for(
