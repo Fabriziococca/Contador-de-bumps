@@ -311,6 +311,13 @@ REGLA 4: Compará el monto pagado con nuestros precios estrictos:
 - Diamante + Plata: $6200 ARS
 - Oro + Plata: $5800 ARS
 - LOS 3 RANGOS JUNTOS: $9900 ARS
+REGLA 5: TUS DATOS DE COBRO (NUNCA INVENTES OTROS):
+- Alias: LENGUA.LUJOSA.TELAR
+- CVU: 0000168300000013531308
+- PayPal (USD): sesarjavier28@gmail.com
+- Binance Pay ID (USDT - 10% OFF): 552346130
+- Titular: Fabrizio Giovanni Cocca Ducay (o Fabrizio Cocca)
+REGLA 6: RESPUESTAS CORTAS: Respondé SIEMPRE a lo que se te pregunta y pide, podes dar algun que otro detalle util y adicional que consideres pero tampoco tanto. Sé directo, servicial y al grano. No uses lenguaje robótico ni des discursos largos.
 
 Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses markdown ni comillas invertidas):
 {{
