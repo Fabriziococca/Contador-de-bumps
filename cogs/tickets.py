@@ -124,7 +124,7 @@ class Tickets(commands.Cog):
                 inline=False
             )
             embed.add_field(name="Alias:", value="LENGUA.LUJOSA.TELAR", inline=False)
-            embed.add_field(name="CVU:", value="0000168300000013531308", inline=False)
+            embed.add_field(name="CVU:", value="0000007900204621435414 ", inline=False)
             embed.add_field(
                 name="🌍 DOLARES (PayPal) Enviar monto exacto a este correo:", 
                 value="sesarjavier28@gmail.com\n⚡ Pagando con USDT vía Binance Pay tenes un 10% de descuento ( Binance ID: 552346130 )", 
@@ -314,7 +314,7 @@ REGLA 4: Compará el monto pagado con nuestros precios estrictos:
 - LOS 3 RANGOS JUNTOS: $9900 ARS
 REGLA 5: TUS DATOS DE COBRO (NUNCA INVENTES OTROS):
 - Alias: LENGUA.LUJOSA.TELAR
-- CVU: 0000168300000013531308
+- CVU: 0000007900204621435414 
 - PayPal (USD): sesarjavier28@gmail.com
 - Binance Pay ID (USDT - 10% OFF): 552346130
 - Titular: Fabrizio Giovanni Cocca Ducay (o Fabrizio Cocca)
