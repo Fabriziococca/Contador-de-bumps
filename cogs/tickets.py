@@ -492,26 +492,46 @@ Consulta actual del usuario: "{message.content}"
                 respuesta_texto = response.text.strip()
                 await message.reply(respuesta_texto)
 
-                # Lógica para otorgar rol desde la conversación si la IA da la orden
-                if "[GRANT_ROLE:" in respuesta_texto:
-                    rol_nombre = respuesta_texto.split("[GRANT_ROLE:")[1].split("]")[0].strip()
-                    if rol_nombre in ROLES:
-                        role_obj = message.guild.get_role(ROLES[rol_nombre]["id"])
-                        if role_obj:
-                            await message.author.add_roles(role_obj, reason="Aclaración de rango vía IA")
-                            await message.channel.send(f"✅ Sistema: Rol **{rol_nombre}** asignado tras aclaración.\n🔔 <@704501115110162542> auditoría manual/aclaración completada.")
+                # --- REEMPLAZALO POR ESTE BLOQUE OPTIMIZADO ---
+                # Lógica avanzada para otorgar múltiples roles desde la conversación si la IA da la orden
+                ordenes_roles = re.findall(r"\[GRANT_ROLE:\s*([A-Za-z0-9_,\s]+)\]", respuesta_texto)
+                
+                if ordenes_roles:
+                    roles_a_dar = []
+                    nombres_roles_asignados = []
+                    
+                    for orden in ordenes_roles:
+                        # Damos soporte tanto si la IA los separa por comas como por tags individuales
+                        roles_split = orden.split(",")
+                        for r_name in roles_split:
+                            r_name = r_name.strip()
+                            if r_name in ROLES:
+                                role_obj = message.guild.get_role(ROLES[r_name]["id"])
+                                if role_obj and role_obj not in roles_a_dar:
+                                    roles_a_dar.append(role_obj)
+                                    nombres_roles_asignados.append(r_name)
+                    
+                    if roles_a_dar:
+                        try:
+                            # Asignación múltiple en un solo empaquetado de Discord
+                            await message.author.add_roles(*roles_a_dar, reason="Aclaración de rango múltiple vía IA")
+                            roles_str = ", ".join(nombres_roles_asignados)
+                            await message.channel.send(f"✅ Sistema: Rol/es **{roles_str}** asignado/s tras aclaración.\n🔔 <@704501115110162542> auditoría manual/aclaración completada.")
                             await self._marcar_ticket_completado(message.channel.id)
 
-                            # Registrar el pago exitoso en la tabla 'pagos' por aclaración manual de IA
+                            # Registrar cada pago impactado en NeonDB de forma independiente
                             try:
                                 async with self.bot.pool.acquire(timeout=5.0) as conn:
-                                    monto_estimado = ROLES[rol_nombre]["ars"] 
-                                    await conn.execute(
-                                        "INSERT INTO pagos (user_id, monto, moneda, rol) VALUES ($1, $2, $3, $4)",
-                                        message.author.id, monto_estimado, "ARS", rol_nombre
-                                    )
+                                    for r_name in nombres_roles_asignados:
+                                        monto_estimado = ROLES[r_name]["ars"] 
+                                        await conn.execute(
+                                            "INSERT INTO pagos (user_id, monto, moneda, rol) VALUES ($1, $2, $3, $4)",
+                                            message.author.id, monto_estimado, "ARS", r_name
+                                        )
                             except Exception as e:
                                 print(f"❌ [DB Error] No se pudo registrar el pago aclarado en la tabla 'pagos': {e}")
+                        except discord.Forbidden:
+                            print(f"❌ Error de Jerarquía: El bot no tiene permisos suficientes para dar los roles: {nombres_roles_asignados}")
 
         except asyncio.TimeoutError:
             await message.reply("⚠️ La IA de soporte está congestionada, intenta preguntar de nuevo.")
