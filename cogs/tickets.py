@@ -10,6 +10,10 @@ from google.api_core.exceptions import GoogleAPIError
 import re
 import random # Agregado para la rotación de API Keys
 
+# --- CONFIGURACIÓN DE NEGOCIO Y ACCESO HIGH-LEVEL ---
+ID_CATEGORIA_SUGERENCIAS = 1510095191275737088
+FABRIZIO_ID = 704501115110162542
+
 # Configuración de Roles y Precios estricta
 ROLES = {
     "Diamante": {"id": 1423389000122499083, "ars": 4100, "usd": 4.0},
@@ -31,7 +35,7 @@ RESPUESTAS_PREDEFINIDAS = {
 class Tickets(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.mi_id = 704501115110162542 # Tu ID de usuario para detección de menciones
+        self.mi_id = FABRIZIO_ID # Tu ID de usuario para detección de menciones
         
         # Setup Multi-API Key para evitar saturación
         self.api_keys = [os.environ.get(k) for k in os.environ.keys() if k.startswith("GEMINI_API_KEY") and os.environ.get(k)]
@@ -83,15 +87,14 @@ class Tickets(commands.Cog):
 
     @commands.Cog.listener()
     async def on_guild_channel_create(self, channel):
-        """Lanza el mensaje de presentación suavizado y el Mega-Embed de precios después de un delay."""
-        if isinstance(channel, discord.TextChannel) and channel.name.startswith("ticket-"):
-            # Aumentamos el delay a 10 segundos para dar tiempo a que Ticket Tool asigne permisos al usuario
+        """Lanza el mensaje de presentación suavizado y el Embed adaptado según la categoría del ticket."""
+        if isinstance(channel, discord.TextChannel) and (channel.name.startswith("ticket-") or channel.name.startswith("sug-") or channel.category_id == ID_CATEGORIA_SUGERENCIAS):
+            # Delay de seguridad de 10 segundos
             await asyncio.sleep(10.0)
             
             channel = channel.guild.get_channel(channel.id)
 
             # --- REGISTRO INICIAL EN DB ---
-            # Buscamos al dueño del ticket en los permisos del canal para empezar el reloj de 3hs
             user_id = None
             if channel:
                 for target in channel.overwrites:
@@ -110,38 +113,64 @@ class Tickets(commands.Cog):
                         """, channel.id, user_id)
                 except Exception as e:
                     print(f"❌ [DB Error] No se pudo registrar ticket inicial {channel.id}: {e}")
-            # ------------------------------
             
-            # Recreando el Embed Premium de Ticket Tool
-            embed = discord.Embed(
-                title="🛒 Zona de Compras", 
-                description="Elegí tu rango y mirá los datos de pago abajo.", 
-                color=0x2B2D31 # Color oscuro de Discord
-            )
-            embed.add_field(
-                name="📉 LISTA DE PRECIOS", 
-                value="💎 Rango Diamante: 🇦🇷 Argentina: $4.100 ARS 🌍 Internacional: $4 USD\n🥇 Rango Oro: 🇦🇷 Argentina: $3.700 ARS 🌍 Internacional: $3,5 USD\n🥈 Rango Plata: 🇦🇷 Argentina: $2.100 ARS 🌍 Internacional: $2 USD", 
-                inline=False
-            )
-            embed.add_field(name="Alias:", value="LENGUA.LUJOSA.TELAR", inline=False)
-            embed.add_field(name="CVU:", value="0000007900204621435414 ", inline=False)
-            embed.add_field(
-                name="🌍 DOLARES (PayPal) Enviar monto exacto a este correo:", 
-                value="sesarjavier28@gmail.com\n⚡ Pagando con USDT vía Binance Pay tenes un 10% de descuento ( Binance ID: 552346130 )", 
-                inline=False
-            )
-            embed.add_field(
-                name="✅ ¿Ya pagaste? Seguí estos pasos:", 
-                value="1. Aclara que rango o rangos estas comprando\n2. Envia el comprobante (Foto o PDF)\n3. El bot entrega el rol correspondiente al instante\n\n❓ Si tenes dudas o problemas, etiqueta a @titocalderon y espera a recibir ayuda\n\n*(Si querés 2 o los 3 rangos juntos, podés transferir el total correspondiente según la combinación elegida.)*", 
-                inline=False
-            )
+            # --- DETECCIÓN E INYECCIÓN DE EMBED BASADO EN CATEGORÍA ---
+            if channel and (channel.category_id == ID_CATEGORIA_SUGERENCIAS or channel.name.startswith("sug-")):
+                embed = discord.Embed(
+                    title="💎 Petición Única de Modelos", 
+                    description="Elegí la chica que querés incorporar al catálogo de forma 100% privada.", 
+                    color=0x1DB954 # Color Verde Premium Estilo Spotify
+                )
+                embed.add_field(
+                    name="💰 COSTO FIJO DE LA SOLICITUD", 
+                    value="🇦🇷 Argentina: $2.000 ARS\n🌍 Internacional: $2 USD", 
+                    inline=False
+                )
+                embed.add_field(name="Alias (ARS):", value="LENGUA.LUJOSA.TELAR", inline=False)
+                embed.add_field(name="CVU (ARS):", value="0000007900204621435414", inline=False)
+                embed.add_field(
+                    name="🌍 DOLARES (PayPal) Enviar monto exacto a este correo:", 
+                    value="sesarjavier28@gmail.com", 
+                    inline=False
+                )
+                embed.add_field(
+                    name="✅ ¿Cómo proceder? Seguí estos pasos:", 
+                    value="1. Envía la foto o PDF del comprobante de pago de la sugerencia.\n2. Escribí el nombre de la modelo que querés incorporar.\n3. El bot validará el monto y Fabrizio se encargará de agregarla en menos de 48hs.\n\n*🛡️ Garantía Absoluta*: Si el contenido no se encuentra en internet o en SimpCity en máxima calidad, **se te devuelve el dinero de inmediato**.", 
+                    inline=False
+                )
+                bienvenida = (
+                    "¡Hola! Soy tu asistente automatizado para peticiones exclusivas. 🤖\n"
+                    "Estoy acá para darte soporte y procesar tu solicitud bajo estricto anonimato.\n\n"
+                )
+            else:
+                embed = discord.Embed(
+                    title="🛒 Zona de Compras", 
+                    description="Elegí tu rango y mirá los datos de pago abajo.", 
+                    color=0x2B2D31 # Color oscuro de Discord
+                )
+                embed.add_field(
+                    name="📉 LISTA DE PRECIOS", 
+                    value="💎 Rango Diamante: 🇦🇷 Argentina: $4.100 ARS 🌍 Internacional: $4 USD\n🥇 Rango Oro: 🇦🇷 Argentina: $3.700 ARS 🌍 Internacional: $3,5 USD\n🥈 Rango Plata: 🇦🇷 Argentina: $2.100 ARS 🌍 Internacional: $2 USD", 
+                    inline=False
+                )
+                embed.add_field(name="Alias:", value="LENGUA.LUJOSA.TELAR", inline=False)
+                embed.add_field(name="CVU:", value="0000007900204621435414 ", inline=False)
+                embed.add_field(
+                    name="🌍 DOLARES (PayPal) Enviar monto exacto a este correo:", 
+                    value="sesarjavier28@gmail.com\n⚡ Pagando con USDT vía Binance Pay tenes un 10% de descuento ( Binance ID: 552346130 )", 
+                    inline=False
+                )
+                embed.add_field(
+                    name="✅ ¿Ya pagaste? Seguí estos pasos:", 
+                    value="1. Aclara que rango o rangos estas comprando\n2. Envia el comprobante (Foto o PDF)\n3. El bot entrega el rol correspondiente al instante\n\n❓ Si tenes dudas o problemas, etiqueta a @titocalderon y espera a recibir ayuda\n\n*(Si querés 2 o los 3 rangos juntos, podés transferir el total correspondiente según la combinación elegida.)*", 
+                    inline=False
+                )
+                bienvenida = (
+                    "¡Hola! Soy tu asistente de ventas automatizado. 🤖\n"
+                    "Estoy aquí para ayudarte a obtener tu rango de forma rápida.\n\n"
+                )
 
-            bienvenida = (
-                "¡Hola! Soy tu asistente de ventas automatizado. 🤖\n"
-                "Estoy aquí para ayudarte a obtener tu rango de forma rápida.\n\n"
-            )
             try:
-                # Enviamos el texto y el embed juntos
                 if channel:
                     await channel.send(content=bienvenida, embed=embed)
             except Exception as e:
@@ -175,7 +204,7 @@ class Tickets(commands.Cog):
     @app_commands.command(name="manual", description="Apaga la IA en este ticket para hablar manualmente con el cliente")
     @app_commands.default_permissions(administrator=True) # Exclusivo para admins
     async def modo_manual(self, interaction: discord.Interaction):
-        if not hasattr(interaction.channel, 'name') or not interaction.channel.name.startswith("ticket-"):
+        if not hasattr(interaction.channel, 'name') or (not interaction.channel.name.startswith("ticket-") and not interaction.channel.name.startswith("sug-")):
             await interaction.response.send_message("⚠️ Este comando solo se puede usar dentro de un ticket.", ephemeral=True)
             return
 
@@ -189,79 +218,71 @@ class Tickets(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        if message.author.bot:
-            return
-            
-        # Ignoramos si el mensaje empieza con / para no interferir con comandos de barra
-        if message.content.startswith('/'):
+        if message.author.bot or message.content.startswith('/'):
             return
 
-        # Solo escuchar en canales que empiecen con 'ticket-'
-        if not hasattr(message.channel, 'name') or not message.channel.name.startswith("ticket-"):
+        # Escudo de escucha flexible: Soporta tanto canales ticket- como sug- y filtros de categoría
+        es_canal_valido = hasattr(message.channel, 'name') and (
+            message.channel.name.startswith("ticket-") or 
+            message.channel.name.startswith("sug-") or 
+            getattr(message.channel, 'category_id', None) == ID_CATEGORIA_SUGERENCIAS
+        )
+        if not es_canal_valido:
             return
 
-        # 0. Verificamos si la IA fue apagada en este ticket (Modo Manual)
+        # Verificamos estado manual
         try:
             async with self.bot.pool.acquire(timeout=5.0) as conn:
                 estado_ticket = await conn.fetchval("SELECT estado FROM tickets WHERE channel_id = $1", message.channel.id)
                 if estado_ticket == 'pausado':
-                    return # No hacemos nada, el bot ignora este canal
+                    return 
         except Exception:
             pass
 
-        # --- LÓGICA DE MENCIONES (Titocalderon o Bot) ---
-        # Si mencionan al bot o a vos, responde de forma atenta
+        # --- LÓGICA DE MENCIONES ---
         mencion_admin = f"<@{self.mi_id}>" in message.content or f"<@!{self.mi_id}>" in message.content
         if self.bot.user.mentioned_in(message) or mencion_admin:
-            await message.reply("¡Hola! Gracias por etiquetarme.\nEstoy acá para ayudarte, ¿cuál es tu duda o problema?")
+            await message.reply("¡Hola! Estoy acá para darte soporte inmediato. ¿Qué duda o inconveniente tenés?")
             return
 
-        # --- ESCUDO ANTI-SPAM (Nivel Búnker) ---
-        # Detecta patrones como discord.gg/abc, discord.com/invite/abc, discordapp.com/invite/abc
+        # --- ESCUDO ANTI-SPAM GLOBAL ---
         patron_invitacion = r"(discord\.(gg|io|me|li|com\/invite)|discordapp\.com\/invite)\/([a-zA-Z0-9\-]+)"
         if re.search(patron_invitacion, message.content, re.IGNORECASE):
-            # 1. Borrar el mensaje para que nadie más vea el link
             await message.delete()
-            # 2. Banear al usuario de una (excepto si sos vos)
-            if message.author.id != 704501115110162542: # Tu ID real
+            if message.author.id != FABRIZIO_ID:
                 try:
                     await message.author.ban(reason="Spam de invitaciones detectado en ticket.")
                     await message.channel.send(f"🚨 **Sistema de Seguridad**: Usuario {message.author.name} baneado permanentemente por spam de invitaciones.")
                     print(f"🔨 [BAN] {message.author.name} ({message.author.id}) por link de invitación.")
-                    return # Cortamos la ejecución acá, el nabo ya no existe
+                    return 
                 except discord.Forbidden:
-                    await message.channel.send("⚠️ No tengo permisos para banear a este nabo, pero borré el link.")
+                    await message.channel.send("⚠️ No tengo permisos para banear a este usuario, pero borré el link.")
                     return
-        # --------------------------------------
 
-        # 1. Registrar actividad en la base de datos (marcando que el usuario ya habló)
+        # Registrar actividad y actualizar timestamp
         await self._update_ticket_activity(message)
 
-        # 2. Detección de Comprobantes (Mensajes con imágenes o PDF)
+        # Intercepción asincrónica de comprobantes (Foto o PDF)
         has_valid_attachment = any(att.content_type and (att.content_type.startswith('image/') or att.content_type == 'application/pdf') for att in message.attachments)
         if message.attachments and has_valid_attachment:
             await self.handle_receipt_image(message)
             return
 
-        # 3. Diccionario de respuestas rápidas para ahorrar API
+        # Respuestas rápidas locales
         contenido_limpio = message.content.strip().lower()
         if contenido_limpio in RESPUESTAS_PREDEFINIDAS:
             await message.reply(RESPUESTAS_PREDEFINIDAS[contenido_limpio])
             return
 
-        # 4. Soporte con IA Proactiva (Escucha siempre en el ticket para cerrar ventas)
+        # Flujo continuo del Chatbot conversacional
         await self.handle_support_query(message)
 
     async def _update_ticket_activity(self, message: discord.Message):
-        # Corrección: Extraer IDs directamente como enteros para compatibilidad con BIGINT
         channel_id = message.channel.id
         user_id = message.author.id
-        
         try:
             async with self.bot.pool.acquire(timeout=5.0) as conn:
-                # Evitamos el error de Foreign Key asegurando que el usuario exista
                 await conn.execute("INSERT INTO usuarios (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING", user_id)
-                
                 query = """
                     INSERT INTO tickets (channel_id, user_id, estado, ultimo_mensaje, hablo)
                     VALUES ($1, $2, 'abierto', CURRENT_TIMESTAMP, TRUE)
@@ -273,19 +294,17 @@ class Tickets(commands.Cog):
             print(f"❌ [DB Error] No se pudo actualizar actividad de ticket {channel_id}: {e}")
 
     async def handle_receipt_image(self, message: discord.Message):
-        # Extraer el adjunto de imagen o PDF
         attachment = next((a for a in message.attachments if a.content_type.startswith('image/') or a.content_type == 'application/pdf'), None)
         if not attachment:
             return
             
         advertencia = await message.channel.send("⏳ **Auditoría IA**: Analizando comprobante de pago...")
+        es_sugerencia = (getattr(message.channel, 'category_id', None) == ID_CATEGORIA_SUGERENCIAS) or message.channel.name.startswith("sug-")
 
         try:
-            # Descargar imagen/pdf nativamente usando discord.py
             image_data = await attachment.read()
             image_parts = [{"mime_type": attachment.content_type, "data": image_data}]
 
-            # Recopilar contexto reciente
             historial = []
             async for msg in message.channel.history(limit=5, before=message):
                 if not msg.author.bot:
@@ -293,7 +312,29 @@ class Tickets(commands.Cog):
             
             contexto = "\n".join(historial)
             
-            prompt = f"""
+            if es_sugerencia:
+                prompt = f"""
+Contexto reciente del chat:
+{contexto}
+
+SOS UN AUDITOR FINANCIERO ESTRICTO. Analizá esta imagen o PDF para validar si es un comprobante de transferencia COMPLETADO (ej: Mercado Pago, Banco, PayPal) para la PETICIÓN ÚNICA DE MODELO.
+REGLA CRÍTICA Y ESTRICTA: Debes verificar OBLIGATORIAMENTE que el destinatario de la transferencia sea 'Fabrizio Giovanni Cocca Ducay' (o Fabrizio Cocca), O que el correo destinatario sea 'sesarjavier28@gmail.com' (para el caso de PayPal). Si es otra persona, marca "es_comprobante": false.
+REGLA 1: Buscá evidencia de que el pago finalizó (ej: "Transferencia exitosa", "Pago realizado").
+REGLA 2: El costo de la sugerencia es exactamente $2000 ARS o $2 USD. Si el monto coincide o supera este valor, marca "valido": true. Caso contrario, marca "valido": false.
+
+Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses markdown ni comillas invertidas):
+{{
+  "es_comprobante": true_o_false,
+  "monto": float,
+  "moneda": "ARS_o_USD",
+  "rol_detectado": "Sugerencia",
+  "valido": true_o_false,
+  "diferencia": float,
+  "necesita_preguntar": false
+}}
+"""
+            else:
+                prompt = f"""
 Contexto reciente del chat (puede contener el rol deseado o aclarar montos parciales):
 {contexto}
 
@@ -332,20 +373,16 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
   "necesita_preguntar": true_o_false
 }}
 """
-            # Implementamos Rotación de API Keys
+
             if self.api_keys:
                 genai.configure(api_key=random.choice(self.api_keys))
                 
-            # Ejecutar modelo forzando exactamente gemini-flash-latest
             model = genai.GenerativeModel('gemini-flash-latest')
-            
-            # Agregamos timeout a nivel de asyncio para evitar bloqueos
             response = await asyncio.wait_for(
                 asyncio.to_thread(model.generate_content, contents=[prompt, image_parts[0]]),
                 timeout=30.0
             )
             
-            # Limpieza y formateo del JSON
             text = response.text.strip()
             if text.startswith("```json"):
                 text = text[7:-3].strip()
@@ -354,7 +391,6 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
                 
             datos = json.loads(text)
 
-            # Validaciones de negocio
             if not datos.get("es_comprobante"):
                 await advertencia.edit(content="❌ **Auditoría Fallida**: No es válido, puede ser un fallo del bot, enviá la foto porfa y ahí vemos qué pasó.")
                 return
@@ -367,6 +403,26 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
             valido = datos.get("valido", False)
             diferencia = float(datos.get("diferencia", 0.0))
 
+            # --- GESTIÓN DE AUDITORÍA EN CANAL DE SUGERENCIAS ---
+            if es_sugerencia:
+                if not valido:
+                    await advertencia.edit(content=f"⚠️ **Comprobante Insuficiente**\nEl pago detectado de **{datos['monto']} {datos['moneda']}** no es suficiente para procesar la petición.\nEl costo fijo es de $2000 ARS / $2 USD. Por favor, abona el resto y envía el comprobante completo.")
+                else:
+                    msg_exito = f"✅ **¡Pago de Petición Verificado con Éxito!**\nEl bot detectó e impactó un pago correcto de **{datos['monto']} {datos['moneda']}**.\n\n🔔 <@{FABRIZIO_ID}> ¡Petición de canal recibida! Vení al ticket a ver qué chica quiere agregar el usuario."
+                    await advertencia.edit(content=msg_exito)
+                    await self._marcar_ticket_completado(message.channel.id)
+
+                    try:
+                        async with self.bot.pool.acquire(timeout=5.0) as conn:
+                            await conn.execute(
+                                "INSERT INTO pagos (user_id, monto, moneda, rol) VALUES ($1, $2, $3, $4)",
+                                message.author.id, float(datos.get('monto', 0)), datos.get('moneda', 'ARS'), "Petición Chica"
+                            )
+                    except Exception as e:
+                        print(f"❌ [DB Error] No se pudo registrar el pago en la tabla 'pagos': {e}")
+                return
+
+            # --- GESTIÓN DE AUDITORÍA EN CANAL DE RANGOS ---
             if not rol or (rol not in ROLES and rol != "Todos" and "," not in rol):
                 await advertencia.edit(content=f"⚠️ **Atención**: Comprobante de {datos.get('monto', 0)} {datos.get('moneda', '')} verificado, pero no alcanza o no concuerda para un rol específico. <@704501115110162542> revisalo manualmente.")
                 return
@@ -376,7 +432,6 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
                 await advertencia.edit(content=f"⚠️ **Comprobante Insuficiente**\nEl pago detectado de **{datos['monto']} {datos['moneda']}** no es suficiente para el rol solicitado.\nFaltan **{faltante} {datos['moneda']}**. Por favor, abona el resto y envía el nuevo comprobante.")
                 return
 
-            # Asignación de Roles múltiples o simples si es válido
             try:
                 roles_a_dar = []
                 if rol == "Todos":
@@ -399,15 +454,10 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
 
                 await message.author.add_roles(*roles_a_dar, reason="Aprobado por Auditoría IA")
                 
-                # Mensaje de éxito limpio con etiqueta correcta
                 msg_exito = f"✅ **¡Pago Verificado con Éxito!**\nSe te ha otorgado el rol **{rol}** automáticamente.\n\n🔔 <@704501115110162542> auditoría automática completada."
-                
                 await advertencia.edit(content=msg_exito)
-                
-                # Marcar en NeonDB como completado
                 await self._marcar_ticket_completado(message.channel.id)
 
-                # Registrar el pago exitoso en la nueva tabla 'pagos'
                 try:
                     async with self.bot.pool.acquire(timeout=5.0) as conn:
                         monto_num = float(datos.get('monto', 0))
@@ -423,7 +473,8 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
                 await advertencia.edit(content="❌ **Error de Permisos**: No tengo los permisos de jerarquía necesarios para asignar el rol.")
 
         except asyncio.TimeoutError:
-                await advertencia.edit(content="⏳ **Servidores saturados**: ¡Recibimos tu comprobante! Pero los servidores de Google están bajo mucha carga ahora mismo. **No es un error de tu pago**. Por favor, volvé a subir la foto en 1 o 2 minutos para que el bot pueda procesarla.")
+            # 🛡️ UX DE CONFIANZA: Mensaje suavizado para evitar sensación de estafa por saturación de Google
+            await advertencia.edit(content="⏳ **Servidores saturados**: ¡Recibimos tu comprobante! Pero los servidores de Google están bajo mucha carga ahora mismo. **No es un error de tu pago**. Por favor, volvé a subir la foto en 1 o 2 minutos para que el bot pueda procesarla.")
         except json.JSONDecodeError:
             print(f"❌ [IA JSON Error] Texto recibido: {text}")
             await advertencia.edit(content="❌ **Error de Procesamiento**: La IA dio una respuesta ilegible. Espera a un administrador.")
@@ -450,9 +501,33 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
             historial.append(f"{autor}: {msg.content}")
         
         contexto_previo = "\n".join(historial)
+        es_sugerencia = (getattr(message.channel, 'category_id', None) == ID_CATEGORIA_SUGERENCIAS) or message.channel.name.startswith("sug-")
 
-        prompt = f"""
-Actúa como un asistente de ventas de Discord para ayudar al usuario a realizar su pago y cerrar la compra.
+        # --- SEPARACIÓN ESTRICTA DE CONTEXTOS PARA EL CHATBOT ---
+        if es_sugerencia:
+            prompt = f"""
+Actúa como un asistente virtual premium de Discord para atender la zona de PETICIONES ÚNICAS DE MODELOS.
+HISTORIAL DE CONVERSACIÓN RECIENTE:
+{contexto_previo}
+
+TUS DATOS DE COBRO ESTRICTOS (NUNCA INVENTES OTROS):
+- Alias (MercadoPago/Bancos ARS): LENGUA.LUJOSA.TELAR
+- CVU: 0000007900204621435414
+- PayPal (USD): sesarjavier28@gmail.com
+- Titular: Fabrizio Giovanni Cocca Ducay
+
+REGLAS DE NEGOCIO Y RESPUESTA PARA SUGERENCIAS (ESTRICTAS):
+1. PRECIO FIJO: Cada petición o sugerencia para agregar una chica nueva al catálogo tiene un costo de $2000 ARS o $2 USD. No alucines otros montos.
+2. RESPUESTAS CORTAS Y DIRECTAS: Respondé siempre en máximo 1 o 2 párrafos cortos (no más de 40 palabras). Sé directo, humano y al grano.
+3. GARANTÍA DE SATISFACCIÓN HONESTA: Aclará que si la modelo solicitada no cuenta con material disponible o no se puede conseguir en máxima calidad, Fabrizio le devuelve el 100% de la plata de inmediato.
+4. PRIVACIDAD ABSOLUTA: Explica que el flujo de pedidos es privado. El canal de la chica aparecerá mágicamente en el servidor de la nada, nadie sabrá quién pagó por ella.
+5. ZERO TRUST ROLES: En esta sección de sugerencias no otorgas ningún rol ni usas comandos de asignación. Si dicen "ya pagué", exígele amablemente que envíe el comprobante por acá.
+
+Consulta actual del usuario: "{message.content}"
+"""
+        else:
+            prompt = f"""
+Actúa como un asistente de ventas de Discord para ayudar al usuario a realizar su pago y cerrar la compra de rangos de acceso.
 HISTORIAL DE CONVERSACIÓN:
 {contexto_previo}
 
@@ -492,56 +567,58 @@ Consulta actual del usuario: "{message.content}"
                 respuesta_texto = response.text.strip()
                 await message.reply(respuesta_texto)
 
-                # --- REEMPLAZALO POR ESTE BLOQUE OPTIMIZADO ---
-                # Lógica avanzada para otorgar múltiples roles desde la conversación si la IA da la orden
-                ordenes_roles = re.findall(r"\[GRANT_ROLE:\s*([A-Za-z0-9_,\s]+)\]", respuesta_texto)
-                
-                if ordenes_roles:
-                    roles_a_dar = []
-                    nombres_roles_asignados = []
+                # Si estamos en un canal de sugerencia, anulamos la asignación de roles automatizada
+                if not es_sugerencia:
+                    # Lógica avanzada para otorgar múltiples roles desde la conversación si la IA da la orden
+                    ordenes_roles = re.findall(r"\[GRANT_ROLE:\s*([A-Za-z0-9_,\s]+)\]", respuesta_texto)
                     
-                    for orden in ordenes_roles:
-                        # Damos soporte tanto si la IA los separa por comas como por tags individuales
-                        roles_split = orden.split(",")
-                        for r_name in roles_split:
-                            r_name = r_name.strip()
-                            if r_name in ROLES:
-                                role_obj = message.guild.get_role(ROLES[r_name]["id"])
-                                if role_obj and role_obj not in roles_a_dar:
-                                    roles_a_dar.append(role_obj)
-                                    nombres_roles_asignados.append(r_name)
-                    
-                    if roles_a_dar:
-                        try:
-                            # Asignación múltiple en un solo empaquetado de Discord
-                            await message.author.add_roles(*roles_a_dar, reason="Aclaración de rango múltiple vía IA")
-                            roles_str = ", ".join(nombres_roles_asignados)
-                            await message.channel.send(f"✅ Sistema: Rol/es **{roles_str}** asignado/s tras aclaración.\n🔔 <@704501115110162542> auditoría manual/aclaración completada.")
-                            await self._marcar_ticket_completado(message.channel.id)
-
-                            # Registrar cada pago impactado en NeonDB de forma independiente
+                    if ordenes_roles:
+                        roles_a_dar = []
+                        nombres_roles_asignados = []
+                        
+                        for orden in ordenes_roles:
+                            # Soporte de roles separados por comas o por tags consecutivos
+                            roles_split = orden.split(",")
+                            for r_name in roles_split:
+                                r_name = r_name.strip()
+                                if r_name in ROLES:
+                                    role_obj = message.guild.get_role(ROLES[r_name]["id"])
+                                    if role_obj and role_obj not in roles_a_dar:
+                                        roles_a_dar.append(role_obj)
+                                        nombres_roles_asignados.append(r_name)
+                        
+                        if roles_a_dar:
                             try:
-                                async with self.bot.pool.acquire(timeout=5.0) as conn:
-                                    for r_name in nombres_roles_asignados:
-                                        monto_estimado = ROLES[r_name]["ars"] 
-                                        await conn.execute(
-                                            "INSERT INTO pagos (user_id, monto, moneda, rol) VALUES ($1, $2, $3, $4)",
-                                            message.author.id, monto_estimado, "ARS", r_name
-                                        )
-                            except Exception as e:
-                                print(f"❌ [DB Error] No se pudo registrar el pago aclarado en la tabla 'pagos': {e}")
-                        except discord.Forbidden:
-                            print(f"❌ Error de Jerarquía: El bot no tiene permisos suficientes para dar los roles: {nombres_roles_asignados}")
+                                # Asignación múltiple en un solo empaquetado de Discord
+                                await message.author.add_roles(*roles_a_dar, reason="Aclaración de rango múltiple vía IA")
+                                roles_str = ", ".join(nombres_roles_asignados)
+                                await message.channel.send(f"✅ Sistema: Rol/es **{roles_str}** asignado/s tras aclaración.\n🔔 <@704501115110162542> auditoría manual/aclaración completada.")
+                                await self._marcar_ticket_completado(message.channel.id)
+
+                                # Registrar cada pago impactado en NeonDB de forma independiente
+                                try:
+                                    async with self.bot.pool.acquire(timeout=5.0) as conn:
+                                        for r_name in nombres_roles_asignados:
+                                            monto_estimado = ROLES[r_name]["ars"] 
+                                            await conn.execute(
+                                                "INSERT INTO pagos (user_id, monto, moneda, rol) VALUES ($1, $2, $3, $4)",
+                                                message.author.id, monto_estimado, "ARS", r_name
+                                            )
+                                except Exception as e:
+                                    print(f"❌ [DB Error] No se pudo registrar el pago aclarado en la tabla 'pagos': {e}")
+                            except discord.Forbidden:
+                                print(f"❌ Error de Jerarquía: El bot no tiene permisos suficientes para dar los roles: {nombres_roles_asignados}")
 
         except asyncio.TimeoutError:
-               await message.reply("⚠️ **IA Congestionada**: Los servidores de Google están tardando en responder. Tu consulta es importante; por favor, intentá preguntar de nuevo en un instante.")
+            # 🛡️ UX DE CONFIANZA: Mensaje suavizado para caídas o latencias externas de Google
+            await message.reply("⚠️ **IA Congestionada**: Los servidores de Google están tardando en responder. Tu consulta es importante; por favor, intentá preguntar de nuevo en un instante.")
         except Exception as e:
             print(f"❌ [IA Support Error]: {e}")
 
     # Tarea en loop cada 30 minutos para limpieza de tickets
     @tasks.loop(minutes=30)
     async def cleanup_tickets(self):
-        # MODIFICADO: Completados a las 24hs
+        # Completados a las 24hs
         query_completados = """
             SELECT channel_id FROM tickets 
             WHERE estado = 'completado' 
@@ -552,7 +629,7 @@ Consulta actual del usuario: "{message.content}"
             WHERE estado = 'abierto' AND hablo = FALSE
             AND ultimo_mensaje <= CURRENT_TIMESTAMP - INTERVAL '3 hours'
         """
-        # MODIFICADO: Inactivos a las 24hs (si habían hablado)
+        # Inactivos a las 24hs (si habían hablado)
         query_abandonados_24h = """
             SELECT channel_id FROM tickets 
             WHERE estado IN ('abierto', 'pausado') AND hablo = TRUE
