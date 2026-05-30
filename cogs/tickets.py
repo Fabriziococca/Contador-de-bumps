@@ -424,7 +424,7 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
 
             # --- GESTIÓN DE AUDITORÍA EN CANAL DE RANGOS ---
             if not rol or (rol not in ROLES and rol != "Todos" and "," not in rol):
-                await advertencia.edit(content=f"⚠️ **Atención**: Comprobante de {datos.get('monto', 0)} {datos.get('moneda', '')} verificado, pero no alcanza o no concuerda para un rol específico. <@704501115110162542> revisalo manualmente.")
+                await advertencia.edit(content=f"⚠️ **Atención**: Comprobante de {datos.get('monto', 0)} {datos.get('moneda', '')} verificado, pero no alcanza o no concuerda para un rol específico, aclara que rangos estas comprando o <@704501115110162542> revisalo manualmente.")
                 return
 
             if not valido:
