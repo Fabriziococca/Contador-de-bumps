@@ -138,8 +138,13 @@ class Tickets(commands.Cog):
                     inline=False
                 )
                 embed.add_field(
+                    name="⚠️ ESTRATEGIA DE INFRAESTRUCTURA (CUPOS LIMITADOS)",
+                    value="Discord prohíbe tener más de 500 canales en total por servidor. Actualmente contamos con **343 canales**, lo que nos deja un margen operativo ajustado. Por este motivo, **el precio de las peticiones irá aumentando progresivamente** a medida que se completen los canales para regular el almacenamiento.",
+                    inline=False
+                )
+                embed.add_field(
                     name="✅ ¿Cómo proceder? Seguí estos pasos:", 
-                    value="1. Envía la foto o PDF del comprobante de pago de la sugerencia.\n2. Enviá una **red social o URL de la modelo** (Instagram, Twitter, OnlyFans, TikTok, etc.).\n3. El bot validará el monto y **Tito Calderón** se encargará de procesar e incorporar el canal.\n\n*🛡️ Garantía Absoluta*: Si el contenido solicitado no se encuentra disponible, **se te devuelve el dinero de inmediato**.", 
+                    value="1. Envía la foto o PDF del comprobante de pago de la sugerencia.\n2. Enviá una **red social o URL de la modelo** (Instagram, Twitter, OnlyFans, TikTok, etc.) para procesar la búsqueda.\n3. El bot validará el monto y **Tito Calderón** se encargará de procesar e incorporar el canal.\n\n*🛡️ Garantía Absoluta*: Si el contenido solicitado no se encuentra disponible, **se te devuelve el dinero de inmediato**.", 
                     inline=False
                 )
                 bienvenida = (
@@ -364,7 +369,7 @@ REGLA 5: TUS DATOS DE COBRO (NUNCA INVENTES OTROS):
 - Binance Pay ID (USDT - 10% OFF): 552346130
 - Titular: Fabrizio Giovanni Cocca Ducay (o Fabrizio Cocca)
 REGLA 6: RESPUESTAS CORTAS: Respondé SIEMPRE a lo que se te pregunta y pide. Sé directo, servicial y al grano. No uses lenguaje robótico ni des discursos largos.
-REGLA 7: DURACIÓN DE LOS RANGOS: Los rangos son PERMANENTES y de por vida. NUNCA expiran ni requieren renovación. Si un usuario dice que "se le bloqueó" o "perdió" el rango, explícale que probablemente se salió del servidor por error. Exígele que envíe la imagen del comprobante de pago original por este medio para verificarlo y devolverle el acceso.
+REGLA 7: DURACIÓN DE LOS RANGOS: Los rangos son PERMANENTES and de por vida. NUNCA expiran ni requieren renovación. Si un usuario dice que "se le bloqueó" o "perdió" el rango, explícale que probablemente se salió del servidor por error. Exígele que envíe la imagen del comprobante de pago original por este medio para verificarlo y devolverle el acceso.
 
 Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses markdown ni comillas invertidas):
 {{
@@ -477,7 +482,7 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
                 await advertencia.edit(content="❌ **Error de Permisos**: No tengo los permisos de jerarquía necesarios para asignar el rol.")
 
         except asyncio.TimeoutError:
-            # 🛡️ UX ANTI-PÁNICO: Mensaje suavizado para evitar sensación de estafa por saturación de Google
+            # 🛡️ UX ANTI-PÁNICO: Mensaje de confianza suavizado ante lag o microcortes de la API externa
             await advertencia.edit(content="⏳ **Servidores saturados**: ¡Recibimos tu comprobante! Pero los servidores de Google están bajo mucha carga ahora mismo. **No es un error de tu pago**. Por favor, volvé a subir la foto en 1 o 2 minutos para que el bot pueda procesarla.")
         except json.JSONDecodeError:
             print(f"❌ [IA JSON Error] Texto recibido: {text}")
@@ -697,43 +702,25 @@ Consulta actual del usuario: "{message.content}"
         await self.bot.wait_until_ready()
 
     # --- 📣 LÓGICA DE REMARKETING ORGÁNICO PROGRAMADO (CANAL DE TESTEO) ---
-    @tasks.loop(hours=168) # 168 horas = 7 días de ciclo estricto de recontacto
+    @tasks.loop(minutes=5) # ⏱️ Ajustado estrictamente a 5 minutos para testeo en caliente
     async def auto_promo_refresh(self):
-        """Tarea de Remarketing: Purgar mensajes anteriores y disparar ping de ventas."""
+        """Tarea de Remarketing: Purgar mensajes anteriores del bot y disparar el ping corto abajo del panel."""
         canal = self.bot.get_channel(ID_CANAL_PROMO_TEST)
         if canal:
             try:
-                # Purga asincrónica defensiva de los mensajes previos del bot en el canal de testeo
+                # Purgamos de forma limpia los pings anteriores del bot para no dejar basura histórica
                 def is_me(m): return m.author == self.bot.user
-                await canal.purge(limit=15, check=is_me)
+                await canal.purge(limit=10, check=is_me)
             except Exception as e:
                 print(f"⚠️ [Remarketing Error] Fallo al limpiar canal de promo: {e}")
 
-            bienvenida = "@everyone 🚀 **¡ACTUALIZACIÓN SEMANAL FINALIZADA!**"
-            
-            embed = discord.Embed(
-                title="🛒 Zona de Compras - Tito Calderón", 
-                description="El catálogo de +300 canales ha sido actualizado con contenido multimedia en máxima resolución nativa.", 
-                color=0x2B2D31
-            )
-            embed.add_field(
-                name="💎 RANGOS CORE DISPONIBLES", 
-                value="• **Diamante**: $4.100 ARS / $4 USD\n• **Oro**: $3.700 ARS / $3,5 USD\n• **Plata**: $2.100 ARS / $2 USD", 
-                inline=False
-            )
-            embed.add_field(
-                name="🛡️ GARANTÍA DE ACCESO TITO", 
-                value="Acceso permanente de por vida, canales ordenados, sin virus y libre de anuncios molestos.", 
-                inline=False
-            )
-            
-            # Inicialización del Component View nativo para mantener el botón de compra fijo abajo
-            view = discord.ui.View()
-            btn = discord.ui.Button(label="Adquirir Rango / Abrir Ticket", style=discord.ButtonStyle.success, custom_id="open_ticket_static")
-            view.add_item(btn)
-            
-            await canal.send(content=bienvenida, embed=embed, view=view)
-            print("📣 [Remarketing] Mensaje semanal de testeo enviado e impactado con éxito.")
+            # Mensaje ultra-corto estratégico: Se posiciona abajo de tu panel estático de Ticket Tool sin taparlo
+            bienvenida = "@everyone 🚀 **¡Actualizamos el contenido recientemente!** Abrí un ticket acá arriba y descubrí todo lo nuevo que subimos. ¡No te lo pierdas! ✨"
+            try:
+                await canal.send(content=bienvenida)
+                print("📣 [Remarketing] Mensaje corto de recontacto enviado con éxito.")
+            except Exception as e:
+                print(f"❌ Error enviando recontacto automático: {e}")
 
     @auto_promo_refresh.before_loop
     async def before_promo(self):
