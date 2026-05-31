@@ -12,6 +12,7 @@ import random # Agregado para la rotación de API Keys
 
 # --- CONFIGURACIÓN DE NEGOCIO Y ACCESO HIGH-LEVEL ---
 ID_CATEGORIA_SUGERENCIAS = 1510095191275737088
+ID_CANAL_PROMO_TEST = 1503937966748205056
 FABRIZIO_ID = 704501115110162542
 
 # Configuración de Roles y Precios estricta
@@ -79,11 +80,13 @@ class Tickets(commands.Cog):
         except Exception as e:
             print(f"❌ [DB Error] Error al crear las tablas: {e}")
             
-        # Iniciar la limpieza periódica
+        # Iniciar la limpieza periódica y el remarketing automático
         self.cleanup_tickets.start()
+        self.auto_promo_refresh.start()
 
     async def cog_unload(self):
         self.cleanup_tickets.cancel()
+        self.auto_promo_refresh.cancel()
 
     @commands.Cog.listener()
     async def on_guild_channel_create(self, channel):
@@ -113,6 +116,7 @@ class Tickets(commands.Cog):
                         """, channel.id, user_id)
                 except Exception as e:
                     print(f"❌ [DB Error] No se pudo registrar ticket inicial {channel.id}: {e}")
+            # ------------------------------
             
             # --- DETECCIÓN E INYECCIÓN DE EMBED BASADO EN CATEGORÍA ---
             if channel and (channel.category_id == ID_CATEGORIA_SUGERENCIAS or channel.name.startswith("sug-")):
@@ -135,7 +139,7 @@ class Tickets(commands.Cog):
                 )
                 embed.add_field(
                     name="✅ ¿Cómo proceder? Seguí estos pasos:", 
-                    value="1. Envía la foto o PDF del comprobante de pago de la sugerencia.\n2. Escribí el nombre de la modelo que querés incorporar.\n3. El bot validará el monto y Fabrizio se encargará de agregarla en menos de 48hs.\n\n*🛡️ Garantía Absoluta*: Si el contenido no se encuentra en internet o en SimpCity en máxima calidad, **se te devuelve el dinero de inmediato**.", 
+                    value="1. Envía la foto o PDF del comprobante de pago de la sugerencia.\n2. Enviá una **red social o URL de la modelo** (Instagram, Twitter, OnlyFans, TikTok, etc.).\n3. El bot validará el monto y **Tito Calderón** se encargará de procesar e incorporar el canal.\n\n*🛡️ Garantía Absoluta*: Si el contenido solicitado no se encuentra disponible, **se te devuelve el dinero de inmediato**.", 
                     inline=False
                 )
                 bienvenida = (
@@ -317,7 +321,7 @@ class Tickets(commands.Cog):
 Contexto reciente del chat:
 {contexto}
 
-SOS UN AUDITOR FINANCIERO ESTRICTO. Analizá esta imagen o PDF para validar si es un comprobante de transferencia COMPLETADO (ej: Mercado Pago, Banco, PayPal) para la PETICIÓN ÚNICA DE MODELO.
+SOS UN AUDITOR FINANCIERO ESTRICTO. Analizá esta imagen o PDF para validar si es un comprobante de transferencia COMPLETADO (ej: Mercado Pago, Banco, PayPal) para la PETICIÓN ÚNICA DE MODELO de Tito Calderón.
 REGLA CRÍTICA Y ESTRICTA: Debes verificar OBLIGATORIAMENTE que el destinatario de la transferencia sea 'Fabrizio Giovanni Cocca Ducay' (o Fabrizio Cocca), O que el correo destinatario sea 'sesarjavier28@gmail.com' (para el caso de PayPal). Si es otra persona, marca "es_comprobante": false.
 REGLA 1: Buscá evidencia de que el pago finalizó (ej: "Transferencia exitosa", "Pago realizado").
 REGLA 2: El costo de la sugerencia es exactamente $2000 ARS o $2 USD. Si el monto coincide o supera este valor, marca "valido": true. Caso contrario, marca "valido": false.
@@ -338,7 +342,7 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
 Contexto reciente del chat (puede contener el rol deseado o aclarar montos parciales):
 {contexto}
 
-SOS UN AUDITOR FINANCIERO ESTRICTO. Analizá esta imagen o PDF para validar si es un comprobante de transferencia COMPLETADO (ej: Mercado Pago, Banco, PayPal).
+SOS UN AUDITOR FINANCIERO ESTRICTO. Analizá esta imagen o PDF para validar si es un comprobante de transferencia COMPLETADO (ej: Mercado Pago, Banco, PayPal) para la auditoría de Tito Calderón.
 REGLA CRÍTICA Y ESTRICTA: Debes verificar OBLIGATORIAMENTE que el destinatario de la transferencia sea 'Fabrizio Giovanni Cocca Ducay' (o Fabrizio Cocca), O que el correo destinatario sea 'sesarjavier28@gmail.com' (para el caso de PayPal). Si logras leer el nombre o correo del destinatario y es otra persona (por ejemplo, le están transfiriendo a un amigo u otro nombre), marca "es_comprobante": false.
 REGLA 1: Buscá evidencia de que el pago finalizó (ej: "Transferencia exitosa", "Pago realizado"). Ignorá capturas de 'pre-transferencia' o pantallas de confirmación sin ejecutar.
 REGLA 2: Si el formato numérico usa coma para miles (ej 4,100.00), convertilo a un número limpio (4100).
@@ -408,7 +412,7 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
                 if not valido:
                     await advertencia.edit(content=f"⚠️ **Comprobante Insuficiente**\nEl pago detectado de **{datos['monto']} {datos['moneda']}** no es suficiente para procesar la petición.\nEl costo fijo es de $2000 ARS / $2 USD. Por favor, abona el resto y envía el comprobante completo.")
                 else:
-                    msg_exito = f"✅ **¡Pago de Petición Verificado con Éxito!**\nEl bot detectó e impactó un pago correcto de **{datos['monto']} {datos['moneda']}**.\n\n🔔 <@{FABRIZIO_ID}> ¡Petición de canal recibida! Vení al ticket a ver qué chica quiere agregar el usuario."
+                    msg_exito = f"✅ **¡Pago de Petición Verificado con Éxito!**\nEl bot detectó e impactó un pago correcto de **{datos['monto']} {datos['moneda']}**.\n\n🔔 <@{FABRIZIO_ID}> ¡Petición de canal recibida! Vení al ticket a ver qué red social de la modelo envió el usuario."
                     await advertencia.edit(content=msg_exito)
                     await self._marcar_ticket_completado(message.channel.id)
 
@@ -473,7 +477,7 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
                 await advertencia.edit(content="❌ **Error de Permisos**: No tengo los permisos de jerarquía necesarios para asignar el rol.")
 
         except asyncio.TimeoutError:
-            # 🛡️ UX DE CONFIANZA: Mensaje suavizado para evitar sensación de estafa por saturación de Google
+            # 🛡️ UX ANTI-PÁNICO: Mensaje suavizado para evitar sensación de estafa por saturación de Google
             await advertencia.edit(content="⏳ **Servidores saturados**: ¡Recibimos tu comprobante! Pero los servidores de Google están bajo mucha carga ahora mismo. **No es un error de tu pago**. Por favor, volvé a subir la foto en 1 o 2 minutos para que el bot pueda procesarla.")
         except json.JSONDecodeError:
             print(f"❌ [IA JSON Error] Texto recibido: {text}")
@@ -506,7 +510,7 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
         # --- SEPARACIÓN ESTRICTA DE CONTEXTOS PARA EL CHATBOT ---
         if es_sugerencia:
             prompt = f"""
-Actúa como un asistente virtual premium de Discord para atender la zona de PETICIONES ÚNICAS DE MODELOS.
+Actúa como un asistente virtual premium de Discord para atender la zona de PETICIONES ÚNICAS DE MODELOS de Tito Calderón.
 HISTORIAL DE CONVERSACIÓN RECIENTE:
 {contexto_previo}
 
@@ -514,20 +518,21 @@ TUS DATOS DE COBRO ESTRICTOS (NUNCA INVENTES OTROS):
 - Alias (MercadoPago/Bancos ARS): LENGUA.LUJOSA.TELAR
 - CBU: 3840200500000026286680
 - PayPal (USD): sesarjavier28@gmail.com
-- Titular: Fabrizio Giovanni Cocca Ducay
+- Titular: Tito Calderón
 
 REGLAS DE NEGOCIO Y RESPUESTA PARA SUGERENCIAS (ESTRICTAS):
 1. PRECIO FIJO: Cada petición o sugerencia para agregar una chica nueva al catálogo tiene un costo de $2000 ARS o $2 USD. No alucines otros montos.
 2. RESPUESTAS CORTAS Y DIRECTAS: Respondé siempre en máximo 1 o 2 párrafos cortos (no más de 40 palabras). Sé directo, humano y al grano.
-3. GARANTÍA DE SATISFACCIÓN HONESTA: Aclará que si la modelo solicitada no cuenta con material disponible o no se puede conseguir en máxima calidad, Fabrizio le devuelve el 100% de la plata de inmediato.
-4. PRIVACIDAD ABSOLUTA: Explica que el flujo de pedidos es privado. El canal de la chica aparecerá mágicamente en el servidor de la nada, nadie sabrá quién pagó por ella.
-5. ZERO TRUST ROLES: En esta sección de sugerencias no otorgas ningún rol ni usas comandos de asignación. Si dicen "ya pagué", exígele amablemente que envíe el comprobante por acá.
+3. EXIGIR RED SOCIAL / URL OBLIGATORIA: El usuario DEBE mandar una red social o URL de la modelo (Instagram, Twitter, TikTok, OnlyFans, etc.) para que Tito Calderón pueda ubicar el perfil. Si solo escriben un nombre genérico, indícales amablemente que es obligatorio proveer un link de red social para procesar el pedido.
+4. GARANTÍA DE SATISFACCIÓN HONESTA: Aclará que si la modelo solicitada no se encuentra disponible, Tito Calderón le devuelve el 100% de la plata de inmediato. (Nunca hables de SimpCity ni de buscar en internet).
+5. PRIVACIDAD ABSOLUTA: Explica que el flujo de pedidos es privado. El canal de la chica aparecerá mágicamente en el servidor de la nada, nadie sabrá quién pagó por ella.
+6. ZERO TRUST ROLES: En esta sección de sugerencias no otorgas ningún rol ni usas comandos de asignación. Si dicen "ya pagué", exígele amablemente que envíe el comprobante por acá.
 
 Consulta actual del usuario: "{message.content}"
 """
         else:
             prompt = f"""
-Actúa como un asistente de ventas de Discord para ayudar al usuario a realizar su pago y cerrar la compra de rangos de acceso.
+Actúa como un asistente de ventas de Discord para ayudar al usuario a realizar su pago y cerrar la compra de rangos de acceso del servidor de Tito Calderón.
 HISTORIAL DE CONVERSACIÓN:
 {contexto_previo}
 
@@ -536,7 +541,7 @@ TUS DATOS DE COBRO ESTRICTOS (NUNCA INVENTES OTROS):
 - CBU: 3840200500000026286680   
 - PayPal (USD): sesarjavier28@gmail.com
 - Binance Pay ID (USDT - 10% OFF): 552346130
-- Titular: Fabrizio Giovanni Cocca Ducay
+- Titular: Tito Calderón
 
 REGLAS DE NEGOCIO Y RESPUESTA (ESTRICTAS):
 1. PRECIOS: Diamante ($4100 ARS / $4 USD), Oro ($3700 ARS / $3.5 USD), Plata ($2100 ARS / $2 USD). NUNCA des otros precios ni alucines valores.
@@ -610,7 +615,6 @@ Consulta actual del usuario: "{message.content}"
                                 print(f"❌ Error de Jerarquía: El bot no tiene permisos suficientes para dar los roles: {nombres_roles_asignados}")
 
         except asyncio.TimeoutError:
-            # 🛡️ UX DE CONFIANZA: Mensaje suavizado para caídas o latencias externas de Google
             await message.reply("⚠️ **IA Congestionada**: Los servidores de Google están tardando en responder. Tu consulta es importante; por favor, intentá preguntar de nuevo en un instante.")
         except Exception as e:
             print(f"❌ [IA Support Error]: {e}")
@@ -690,6 +694,49 @@ Consulta actual del usuario: "{message.content}"
 
     @cleanup_tickets.before_loop
     async def before_cleanup(self):
+        await self.bot.wait_until_ready()
+
+    # --- 📣 LÓGICA DE REMARKETING ORGÁNICO PROGRAMADO (CANAL DE TESTEO) ---
+    @tasks.loop(hours=168) # 168 horas = 7 días de ciclo estricto de recontacto
+    async def auto_promo_refresh(self):
+        """Tarea de Remarketing: Purgar mensajes anteriores y disparar ping de ventas."""
+        canal = self.bot.get_channel(ID_CANAL_PROMO_TEST)
+        if canal:
+            try:
+                # Purga asincrónica defensiva de los mensajes previos del bot en el canal de testeo
+                def is_me(m): return m.author == self.bot.user
+                await canal.purge(limit=15, check=is_me)
+            except Exception as e:
+                print(f"⚠️ [Remarketing Error] Fallo al limpiar canal de promo: {e}")
+
+            bienvenida = "@everyone 🚀 **¡ACTUALIZACIÓN SEMANAL FINALIZADA!**"
+            
+            embed = discord.Embed(
+                title="🛒 Zona de Compras - Tito Calderón", 
+                description="El catálogo de +300 canales ha sido actualizado con contenido multimedia en máxima resolución nativa.", 
+                color=0x2B2D31
+            )
+            embed.add_field(
+                name="💎 RANGOS CORE DISPONIBLES", 
+                value="• **Diamante**: $4.100 ARS / $4 USD\n• **Oro**: $3.700 ARS / $3,5 USD\n• **Plata**: $2.100 ARS / $2 USD", 
+                inline=False
+            )
+            embed.add_field(
+                name="🛡️ GARANTÍA DE ACCESO TITO", 
+                value="Acceso permanente de por vida, canales ordenados, sin virus y libre de anuncios molestos.", 
+                inline=False
+            )
+            
+            # Inicialización del Component View nativo para mantener el botón de compra fijo abajo
+            view = discord.ui.View()
+            btn = discord.ui.Button(label="Adquirir Rango / Abrir Ticket", style=discord.ButtonStyle.success, custom_id="open_ticket_static")
+            view.add_item(btn)
+            
+            await canal.send(content=bienvenida, embed=embed, view=view)
+            print("📣 [Remarketing] Mensaje semanal de testeo enviado e impactado con éxito.")
+
+    @auto_promo_refresh.before_loop
+    async def before_promo(self):
         await self.bot.wait_until_ready()
 
 async def setup(bot: commands.Bot):
