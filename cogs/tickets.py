@@ -167,7 +167,7 @@ class Tickets(commands.Cog):
                 embed.add_field(name="CBU:", value="3840200500000026286680", inline=False)
                 embed.add_field(
                     name="🌍 DOLARES (PayPal) Enviar monto exacto a este correo:", 
-                    value="sesarjavier28@gmail.com\n⚡ Pagando con USDT vía Binance Pay tenes un 10% de descuento ( Binance ID: 552346130 )", 
+                    value="sesarjavier28@gmail.com\n", 
                     inline=False
                 )
                 embed.add_field(
