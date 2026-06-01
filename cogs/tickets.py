@@ -144,8 +144,8 @@ class Tickets(commands.Cog):
                     inline=False
                 )
                 embed.add_field(
-                    name="⚠️ ESTRATEGIA DE INFRAESTRUCTURA (CUPOS LIMITADOS)",
-                    value="Discord prohíbe tener más de 500 canales en total por servidor. Actualmente contamos con **343 canales** en total de todo, no solo los de las chicas, lo que nos deja un margen operativo ajustado. Por este motivo, **el precio de las peticiones irá aumentando progresivamente** a medida que se completen los canales para regular el almacenamiento.",
+                    name="⚠️ INFORMACION DE INFRAESTRUCTURA (CUPOS LIMITADOS)",
+                    value="Discord prohíbe tener más de 500 canales en total por servidor. Actualmente estamos cerca de ese numero, lo que nos deja un margen operativo ajustado. Por este motivo, **el precio de las peticiones irá aumentando progresivamente** a medida que se completen los canales para regular el almacenamiento.",
                     inline=False
                 )
                 bienvenida = (
