@@ -118,6 +118,7 @@ class Tickets(commands.Cog):
                     print(f"❌ [DB Error] No se pudo registrar ticket inicial {channel.id}: {e}")
             # ------------------------------
             
+            
             # --- DETECCIÓN E INYECCIÓN DE EMBED BASADO EN CATEGORÍA ---
             if channel and (channel.category_id == ID_CATEGORIA_SUGERENCIAS or channel.name.startswith("sug-")):
                 embed = discord.Embed(
@@ -138,13 +139,13 @@ class Tickets(commands.Cog):
                     inline=False
                 )
                 embed.add_field(
-                    name="⚠️ ESTRATEGIA DE INFRAESTRUCTURA (CUPOS LIMITADOS)",
-                    value="Discord prohíbe tener más de 500 canales en total por servidor. Actualmente contamos con **343 canales**, lo que nos deja un margen operativo ajustado. Por este motivo, **el precio de las peticiones irá aumentando progresivamente** a medida que se completen los canales para regular el almacenamiento.",
+                    name="✅ ¿Cómo proceder? Seguí estos pasos:", 
+                    value="1. Envía la foto o PDF del comprobante de pago de la sugerencia.\n2. Enviá una **red social o URL de la modelo** (Instagram, Twitter, OnlyFans, TikTok, etc.) para procesar la búsqueda.\n3. El bot validará el monto y **Tito Calderón** se encargará de procesar e incorporar el canal.\n\n*🛡️ Garantía Absoluta*: Si el contenido solicitado no se encuentra disponible, **se te devuelve el dinero de inmediato**.", 
                     inline=False
                 )
                 embed.add_field(
-                    name="✅ ¿Cómo proceder? Seguí estos pasos:", 
-                    value="1. Envía la foto o PDF del comprobante de pago de la sugerencia.\n2. Enviá una **red social o URL de la modelo** (Instagram, Twitter, OnlyFans, TikTok, etc.) para procesar la búsqueda.\n3. El bot validará el monto y **Tito Calderón** se encargará de procesar e incorporar el canal.\n\n*🛡️ Garantía Absoluta*: Si el contenido solicitado no se encuentra disponible, **se te devuelve el dinero de inmediato**.", 
+                    name="⚠️ ESTRATEGIA DE INFRAESTRUCTURA (CUPOS LIMITADOS)",
+                    value="Discord prohíbe tener más de 500 canales en total por servidor. Actualmente contamos con **343 canales** en total de todo, no solo los de las chicas, lo que nos deja un margen operativo ajustado. Por este motivo, **el precio de las peticiones irá aumentando progresivamente** a medida que se completen los canales para regular el almacenamiento.",
                     inline=False
                 )
                 bienvenida = (
@@ -701,24 +702,25 @@ Consulta actual del usuario: "{message.content}"
     async def before_cleanup(self):
         await self.bot.wait_until_ready()
 
+    
     # --- 📣 LÓGICA DE REMARKETING ORGÁNICO PROGRAMADO (CANAL DE TESTEO) ---
-    @tasks.loop(minutes=5) # ⏱️ Ajustado estrictamente a 5 minutos para testeo en caliente
+    @tasks.loop(hours=168) # 168 horas = 7 días de ciclo estricto de recontacto
     async def auto_promo_refresh(self):
-        """Tarea de Remarketing: Purgar mensajes anteriores del bot y disparar el ping corto abajo del panel."""
+        """Tarea de Remarketing: Purgar pings anteriores del bot y disparar el recordatorio corto."""
         canal = self.bot.get_channel(ID_CANAL_PROMO_TEST)
         if canal:
             try:
-                # Purgamos de forma limpia los pings anteriores del bot para no dejar basura histórica
+                # Purga asincrónica de los mensajes viejos enviados por el bot para no acumular basura
                 def is_me(m): return m.author == self.bot.user
                 await canal.purge(limit=10, check=is_me)
             except Exception as e:
                 print(f"⚠️ [Remarketing Error] Fallo al limpiar canal de promo: {e}")
 
-            # Mensaje ultra-corto estratégico: Se posiciona abajo de tu panel estático de Ticket Tool sin taparlo
+            # Mensaje estratégico corto: Se posiciona abajo de Ticket Tool sin enterrar el botón
             bienvenida = "@everyone 🚀 **¡Actualizamos el contenido recientemente!** Abrí un ticket acá arriba y descubrí todo lo nuevo que subimos. ¡No te lo pierdas! ✨"
             try:
                 await canal.send(content=bienvenida)
-                print("📣 [Remarketing] Mensaje corto de recontacto enviado con éxito.")
+                print("📣 [Remarketing] Mensaje semanal de recontacto enviado con éxito.")
             except Exception as e:
                 print(f"❌ Error enviando recontacto automático: {e}")
 
