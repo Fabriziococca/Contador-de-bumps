@@ -38,6 +38,15 @@ class Tickets(commands.Cog):
         self.bot = bot
         self.mi_id = FABRIZIO_ID # Tu ID de usuario para detección de menciones
         
+        # --- NUEVO: Pool de modelos para rotación secuencial defensiva ---
+        self.model_pool = [
+            "gemini-3.5-flash", 
+            "gemini-3.1-flash-lite", 
+            "gemini-2.5-flash", 
+            "gemini-2.5-flash-lite", 
+            "gemini-flash-latest"
+        ]
+        
         # Setup Multi-API Key para evitar saturación
         self.api_keys = [os.environ.get(k) for k in os.environ.keys() if k.startswith("GEMINI_API_KEY") and os.environ.get(k)]
         if not self.api_keys:
@@ -88,6 +97,41 @@ class Tickets(commands.Cog):
         self.cleanup_tickets.cancel()
         self.auto_promo_refresh.cancel()
 
+    # --- NUEVO: OMNI-PROTOCOLO DE ROTACIÓN DE MODELOS ---
+    async def _generate_content_with_rotation(self, prompt, image_parts=None):
+        """Implementación de rotación secuencial de 5 modelos ante fallas."""
+        last_error = None
+        
+        for model_name in self.model_pool:
+            if self.api_keys:
+                genai.configure(api_key=random.choice(self.api_keys))
+            
+            try:
+                model = genai.GenerativeModel(model_name)
+                
+                if image_parts:
+                    response = await asyncio.wait_for(
+                        asyncio.to_thread(model.generate_content, contents=[prompt, image_parts[0]]),
+                        timeout=30.0
+                    )
+                else:
+                    response = await asyncio.wait_for(
+                        asyncio.to_thread(model.generate_content, contents=[prompt]),
+                        timeout=30.0
+                    )
+                
+                return response.text.strip()
+                
+            except Exception as e:
+                print(f"⚠️ [Advertencia] Fallo en modelo {model_name}: {e}. Reintentando con el siguiente modelo del pool...")
+                last_error = e
+                continue # Salta al siguiente modelo
+        
+        # Si llega acá, fallaron los 5 modelos de forma consecutiva
+        print("🚨 [CRÍTICO] Los 5 modelos del pool han fallado consecutivamente.")
+        raise last_error
+    # ----------------------------------------------------
+
     @commands.Cog.listener()
     async def on_guild_channel_create(self, channel):
         """Lanza el mensaje de presentación suavizado y el Embed adaptado según la categoría del ticket."""
@@ -117,7 +161,6 @@ class Tickets(commands.Cog):
                 except Exception as e:
                     print(f"❌ [DB Error] No se pudo registrar ticket inicial {channel.id}: {e}")
             # ------------------------------
-            
             
             # --- DETECCIÓN E INYECCIÓN DE EMBED BASADO EN CATEGORÍA ---
             if channel and (channel.category_id == ID_CATEGORIA_SUGERENCIAS or channel.name.startswith("sug-")):
@@ -384,16 +427,10 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
 }}
 """
 
-            if self.api_keys:
-                genai.configure(api_key=random.choice(self.api_keys))
-                
-            model = genai.GenerativeModel('gemini-flash-latest')
-            response = await asyncio.wait_for(
-                asyncio.to_thread(model.generate_content, contents=[prompt, image_parts[0]]),
-                timeout=30.0
-            )
+            # --- NUEVO: Llamada al motor de rotación en lugar del modelo fijo ---
+            text = await self._generate_content_with_rotation(prompt, image_parts)
             
-            text = response.text.strip()
+            text = text.strip()
             if text.startswith("```json"):
                 text = text[7:-3].strip()
             elif text.startswith("```"):
@@ -565,17 +602,9 @@ Si no hay validación previa de imagen en el historial o falta dinero, pide el c
 Consulta actual del usuario: "{message.content}"
 """
         try:
-            # Implementamos Rotación de API Keys
-            if self.api_keys:
-                genai.configure(api_key=random.choice(self.api_keys))
-
             async with message.channel.typing():
-                model = genai.GenerativeModel('gemini-flash-latest')
-                response = await asyncio.wait_for(
-                    asyncio.to_thread(model.generate_content, contents=[prompt]),
-                    timeout=30.0
-                )
-                respuesta_texto = response.text.strip()
+                # --- NUEVO: Llamada al motor de rotación ---
+                respuesta_texto = await self._generate_content_with_rotation(prompt)
                 await message.reply(respuesta_texto)
 
                 # Si estamos en un canal de sugerencia, anulamos la asignación de roles automatizada
