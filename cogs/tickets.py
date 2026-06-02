@@ -10,7 +10,7 @@ from google.api_core.exceptions import GoogleAPIError
 import re
 import random # Agregado para la rotación de API Keys
 
-# --- CONFIGURACIÓN DE NEGOCIO Y ACCESO HIGH-LEVEL ---
+# --- CONFIGURACIÓN DE NEGOCIO AND ACCESO HIGH-LEVEL ---
 ID_CATEGORIA_SUGERENCIAS = 1510095191275737088
 ID_CANAL_PROMO_TEST = 1503937966748205056
 FABRIZIO_ID = 704501115110162542
@@ -38,7 +38,7 @@ class Tickets(commands.Cog):
         self.bot = bot
         self.mi_id = FABRIZIO_ID # Tu ID de usuario para detección de menciones
         
-        # --- NUEVO: Pool de modelos para rotación secuencial defensiva ---
+        # --- ARQUITECTURA DEFENSIVA: Pool secuencial de 5 modelos funcionales validados ---
         self.model_pool = [
             "gemini-3.5-flash", 
             "gemini-3.1-flash-lite", 
@@ -49,10 +49,12 @@ class Tickets(commands.Cog):
         
         # Setup Multi-API Key para evitar saturación
         self.api_keys = [os.environ.get(k) for k in os.environ.keys() if k.startswith("GEMINI_API_KEY") and os.environ.get(k)]
+        self.current_key_index = 0 # Índice fijo para controlar la conmutación secuencial de cuotas
+        
         if not self.api_keys:
             print("⚠️ [ADVERTENCIA] No se encontraron variables GEMINI_API_KEY en .env o Render.")
         else:
-            print(f"✅ Se cargaron {len(self.api_keys)} API Keys de Gemini. Rotación activada.")
+            print(f"✅ BÚNKER DE IA: {len(self.api_keys)} API Keys y pool de {len(self.model_pool)} modelos listos para conmutación.")
 
     async def cog_load(self):
         # Crear la tabla de tickets en NeonDB asegurando el uso de BIGINT para IDs
@@ -97,40 +99,46 @@ class Tickets(commands.Cog):
         self.cleanup_tickets.cancel()
         self.auto_promo_refresh.cancel()
 
-    # --- NUEVO: OMNI-PROTOCOLO DE ROTACIÓN DE MODELOS ---
+    # --- OMNI-PROTOCOLO SELECCIÓN Y ROTACIÓN HÍBRIDA DE CAPA GRATUITA ---
     async def _generate_content_with_rotation(self, prompt, image_parts=None):
-        """Implementación de rotación secuencial de 5 modelos ante fallas."""
-        last_error = None
+        """Ejecuta la conmutación de API Keys y salta secuencialmente por el pool de 5 modelos ante errores."""
+        if not self.api_keys:
+            raise Exception("No se encontraron API Keys configuradas en el entorno.")
         
-        for model_name in self.model_pool:
-            if self.api_keys:
-                genai.configure(api_key=random.choice(self.api_keys))
+        # El sistema probará un ciclo entero por cada API Key disponible en tu pool
+        for intento_key in range(len(self.api_keys)):
+            llave_actual = self.api_keys[self.current_key_index]
+            genai.configure(api_key=llave_actual)
             
-            try:
-                model = genai.GenerativeModel(model_name)
-                
-                if image_parts:
-                    response = await asyncio.wait_for(
-                        asyncio.to_thread(model.generate_content, contents=[prompt, image_parts[0]]),
-                        timeout=30.0
-                    )
-                else:
-                    response = await asyncio.wait_for(
-                        asyncio.to_thread(model.generate_content, contents=[prompt]),
-                        timeout=30.0
-                    )
-                
-                return response.text.strip()
-                
-            except Exception as e:
-                print(f"⚠️ [Advertencia] Fallo en modelo {model_name}: {e}. Reintentando con el siguiente modelo del pool...")
-                last_error = e
-                continue # Salta al siguiente modelo
-        
-        # Si llega acá, fallaron los 5 modelos de forma consecutiva
-        print("🚨 [CRÍTICO] Los 5 modelos del pool han fallado consecutivamente.")
-        raise last_error
-    # ----------------------------------------------------
+            # Recorremos de forma secuencial el pool de 5 modelos validados para la llave activa
+            for model_name in self.model_pool:
+                try:
+                    model = genai.GenerativeModel(model_name)
+                    
+                    if image_parts:
+                        response = await asyncio.wait_for(
+                            asyncio.to_thread(model.generate_content, contents=[prompt, image_parts[0]]),
+                            timeout=30.0
+                        )
+                    else:
+                        response = await asyncio.wait_for(
+                            asyncio.to_thread(model.generate_content, contents=[prompt]),
+                            timeout=30.0
+                        )
+                    return response.text.strip()
+                    
+                except Exception as e:
+                    # Captura la excepción específica de la API sin romper la ejecución del bot de soporte
+                    print(f"⚠️ [Advertencia IA] Fallo con modelo {model_name} usando API Key índice {self.current_key_index}: {e}. Rotando al siguiente modelo funcional...")
+                    continue # Salta al siguiente modelo disponible del pool de 5
+            
+            # Si el bucle de modelos termina sin retornar, significa que los 5 modelos fallaron de corrido para esta Key
+            indice_viejo = self.current_key_index
+            self.current_key_index = (self.current_key_index + 1) % len(self.api_keys)
+            print(f"🔄 [CONMUTACIÓN CRÍTICA] Pool de 5 modelos agotado para API Key índice {indice_viejo}. Saltando a API Key índice {self.current_key_index} para reiniciar ciclo entero...")
+            
+        # Si salimos de ambos bucles, las dos llaves consumieron sus cuotas diarias o colapsaron por completo
+        raise Exception("🚨 [EXCEPCIÓN CRÍTICA FINAL] Ambas API Keys agotaron de manera consecutiva el pool de 5 modelos funcionales.")
 
     @commands.Cog.listener()
     async def on_guild_channel_create(self, channel):
@@ -371,7 +379,7 @@ Contexto reciente del chat:
 {contexto}
 
 SOS UN AUDITOR FINANCIERO ESTRICTO. Analizá esta imagen o PDF para validar si es un comprobante de transferencia COMPLETADO (ej: Mercado Pago, Banco, PayPal) para la PETICIÓN ÚNICA DE MODELO de Tito Calderón.
-REGLA CRÍTICA Y ESTRICTA: Debes verificar OBLIGATORIAMENTE que el destinatario de la transferencia sea 'Fabrizio Giovanni Cocca Ducay' (o Fabrizio Cocca), O que el correo destinatario sea 'sesarjavier28@gmail.com' (para el caso de PayPal). Si es otra persona, marca "es_comprobante": false.
+REGLA CRÍTICA Y ESTRICTA: Devues verificar OBLIGATORIAMENTE que el destinatario de la transferencia sea 'Fabrizio Giovanni Cocca Ducay' (o Fabrizio Cocca), O que el correo destinatario sea 'sesarjavier28@gmail.com' (para el caso de PayPal). Si es otra persona, marca "es_comprobante": false.
 REGLA 1: Buscá evidencia de que el pago finalizó (ej: "Transferencia exitosa", "Pago realizado").
 REGLA 2: El costo de la sugerencia es exactamente $2000 ARS o $2 USD. Si el monto coincide o supera este valor, marca "valido": true. Caso contrario, marca "valido": false.
 
@@ -397,7 +405,7 @@ REGLA 1: Buscá evidencia de que el pago finalizó (ej: "Transferencia exitosa",
 REGLA 2: Si el formato numérico usa coma para miles (ej 4,100.00), convertilo a un número limpio (4100).
 REGLA 3 DE MONTO RANDOM: 
 - Si el monto NO coincide exactamente con un rango o combo, pero el usuario ESPECIFICÓ uno en el contexto, validalo contra ese.
-- Si el monto es random y el usuario NO especificó qué quería, devolvé 'necesita_preguntar': true.
+- Si el monto es random and el usuario NO especificó qué quería, devolvé 'necesita_preguntar': true.
 REGLA 4: Compará el monto pagado con nuestros precios estrictos:
 - Diamante: $4100 ARS / $4 USD
 - Oro: $3700 ARS / $3.5 USD
@@ -427,7 +435,7 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
 }}
 """
 
-            # --- NUEVO: Llamada al motor de rotación en lugar del modelo fijo ---
+            # --- INTERCEPCIÓN PROTOCOLO DE CONMUTACIÓN DE LLAVES Y MODELOS ---
             text = await self._generate_content_with_rotation(prompt, image_parts)
             
             text = text.strip()
@@ -520,7 +528,6 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
                 await advertencia.edit(content="❌ **Error de Permisos**: No tengo los permisos de jerarquía necesarios para asignar el rol.")
 
         except asyncio.TimeoutError:
-            # 🛡️ UX ANTI-PÁNICO: Mensaje de confianza suavizado ante lag o microcortes de la API externa
             await advertencia.edit(content="⏳ **Servidores saturados**: ¡Recibimos tu comprobante! Pero los servidores de Google están bajo mucha carga ahora mismo. **No es un error de tu pago**. Por favor, volvé a subir la foto en 1 o 2 minutos para que el bot pueda procesarla.")
         except json.JSONDecodeError:
             print(f"❌ [IA JSON Error] Texto recibido: {text}")
@@ -603,7 +610,7 @@ Consulta actual del usuario: "{message.content}"
 """
         try:
             async with message.channel.typing():
-                # --- NUEVO: Llamada al motor de rotación ---
+                # --- INTERCEPCIÓN PROTOCOLO DE CONMUTACIÓN PARA EL CHATBOT ---
                 respuesta_texto = await self._generate_content_with_rotation(prompt)
                 await message.reply(respuesta_texto)
 
