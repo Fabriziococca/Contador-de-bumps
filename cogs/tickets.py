@@ -150,24 +150,29 @@ class Tickets(commands.Cog):
             channel = channel.guild.get_channel(channel.id)
 
             # --- REGISTRO INICIAL EN DB ---
-            user_id = None
+            # --- REGISTRO INICIAL EN DB (GUARDADO INCONDICIONAL) ---
+            user_id = 0 # Valor 0 por defecto por si Ticket Tool tiene lag
             if channel:
                 for target in channel.overwrites:
                     if isinstance(target, discord.Member) and not target.bot:
                         user_id = target.id
                         break
             
-            if user_id:
-                try:
-                    async with self.bot.pool.acquire(timeout=5.0) as conn:
+            try:
+                async with self.bot.pool.acquire(timeout=5.0) as conn:
+                    # 1. Guardamos al usuario solo si lo detectamos a tiempo
+                    if user_id != 0:
                         await conn.execute("INSERT INTO usuarios (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING", user_id)
-                        await conn.execute("""
-                            INSERT INTO tickets (channel_id, user_id, estado, ultimo_mensaje, hablo)
-                            VALUES ($1, $2, 'abierto', CURRENT_TIMESTAMP, FALSE)
-                            ON CONFLICT (channel_id) DO NOTHING
-                        """, channel.id, user_id)
-                except Exception as e:
-                    print(f"❌ [DB Error] No se pudo registrar ticket inicial {channel.id}: {e}")
+                    
+                    # 2. GUARDAMOS EL TICKET SÍ O SÍ (Incluso si user_id es 0)
+                    await conn.execute("""
+                        INSERT INTO tickets (channel_id, user_id, estado, ultimo_mensaje, hablo)
+                        VALUES ($1, $2, 'abierto', CURRENT_TIMESTAMP, FALSE)
+                        ON CONFLICT (channel_id) DO NOTHING
+                    """, channel.id, user_id)
+            except Exception as e:
+                print(f"❌ [DB Error] No se pudo registrar ticket inicial {channel.id}: {e}")
+            # ------------------------------
             # ------------------------------
             
             # --- DETECCIÓN E INYECCIÓN DE EMBED BASADO EN CATEGORÍA ---
@@ -348,7 +353,7 @@ class Tickets(commands.Cog):
                     INSERT INTO tickets (channel_id, user_id, estado, ultimo_mensaje, hablo)
                     VALUES ($1, $2, 'abierto', CURRENT_TIMESTAMP, TRUE)
                     ON CONFLICT (channel_id) DO UPDATE 
-                    SET ultimo_mensaje = CURRENT_TIMESTAMP, hablo = TRUE
+                    SET ultimo_mensaje = CURRENT_TIMESTAMP, hablo = TRUE, user_id = EXCLUDED.user_id
                 """
                 await conn.execute(query, channel_id, user_id)
         except Exception as e:
