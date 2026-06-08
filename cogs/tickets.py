@@ -149,7 +149,6 @@ class Tickets(commands.Cog):
             
             channel = channel.guild.get_channel(channel.id)
 
-            # --- REGISTRO INICIAL EN DB ---
             # --- REGISTRO INICIAL EN DB (GUARDADO INCONDICIONAL) ---
             user_id = 0 # Valor 0 por defecto por si Ticket Tool tiene lag
             if channel:
@@ -172,7 +171,6 @@ class Tickets(commands.Cog):
                     """, channel.id, user_id)
             except Exception as e:
                 print(f"❌ [DB Error] No se pudo registrar ticket inicial {channel.id}: {e}")
-            # ------------------------------
             # ------------------------------
             
             # --- DETECCIÓN E INYECCIÓN DE EMBED BASADO EN CATEGORÍA ---
@@ -469,8 +467,12 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
                 if not valido:
                     await advertencia.edit(content=f"⚠️ **Comprobante Insuficiente**\nEl pago detectado de **{datos['monto']} {datos['moneda']}** no es suficiente para procesar la petición.\nEl costo fijo es de $2000 ARS / $2 USD. Por favor, abona el resto y envía el comprobante completo.")
                 else:
-                    msg_exito = f"✅ **¡Pago de Petición Verificado con Éxito!**\nEl bot detectó e impactó un pago correcto de **{datos['monto']} {datos['moneda']}**.\n\n🔔 <@{FABRIZIO_ID}> ¡Petición de canal recibida! Vení al ticket a ver qué red social de la modelo envió el usuario."
+                    msg_exito = f"✅ **¡Pago de Petición Verificado con Éxito!**\nEl bot detectó e impactó un pago correcto de **{datos['monto']} {datos['moneda']}**."
                     await advertencia.edit(content=msg_exito)
+                    
+                    # Mensaje nuevo para generar notificación push en Discord
+                    await message.channel.send(content=f"🔔 <@{FABRIZIO_ID}> ¡Petición de canal recibida! Vení al ticket a ver qué red social de la modelo envió el usuario.")
+                    
                     await self._marcar_ticket_completado(message.channel.id)
 
                     try:
@@ -485,7 +487,7 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
 
             # --- GESTIÓN DE AUDITORÍA EN CANAL DE RANGOS ---
             if not rol or (rol not in ROLES and rol != "Todos" and "," not in rol):
-                await advertencia.edit(content=f"⚠️ **Atención**: Comprobante de {datos.get('monto', 0)} {datos.get('moneda', '')} verificado, pero no alcanza o no concuerda para un rol específico, aclara que rangos estas comprando o <@704501115110162542> revisalo manualmente.")
+                await advertencia.edit(content=f"⚠️ **Atención**: Comprobante de {datos.get('monto', 0)} {datos.get('moneda', '')} verificado, pero no alcanza o no concuerda para un rol específico, aclara que rangos estas comprando o <@{FABRIZIO_ID}> revisalo manualmente.")
                 return
 
             if not valido:
@@ -515,8 +517,12 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
 
                 await message.author.add_roles(*roles_a_dar, reason="Aprobado por Auditoría IA")
                 
-                msg_exito = f"✅ **¡Pago Verificado con Éxito!**\nSe te ha otorgado el rol **{rol}** automáticamente.\n\n🔔 <@704501115110162542> auditoría automática completada."
+                msg_exito = f"✅ **¡Pago Verificado con Éxito!**\nSe te ha otorgado el rol **{rol}** automáticamente."
                 await advertencia.edit(content=msg_exito)
+                
+                # Mensaje nuevo para generar notificación push en Discord
+                await message.channel.send(content=f"🔔 <@{FABRIZIO_ID}> auditoría automática completada.")
+                
                 await self._marcar_ticket_completado(message.channel.id)
 
                 try:
@@ -645,7 +651,7 @@ Consulta actual del usuario: "{message.content}"
                                 # Asignación múltiple en un solo empaquetado de Discord
                                 await message.author.add_roles(*roles_a_dar, reason="Aclaración de rango múltiple vía IA")
                                 roles_str = ", ".join(nombres_roles_asignados)
-                                await message.channel.send(f"✅ Sistema: Rol/es **{roles_str}** asignado/s tras aclaración.\n🔔 <@704501115110162542> auditoría manual/aclaración completada.")
+                                await message.channel.send(f"✅ Sistema: Rol/es **{roles_str}** asignado/s tras aclaración.\n🔔 <@{FABRIZIO_ID}> auditoría manual/aclaración completada.")
                                 await self._marcar_ticket_completado(message.channel.id)
 
                                 # Registrar cada pago impactado en NeonDB de forma independiente
@@ -681,7 +687,7 @@ Consulta actual del usuario: "{message.content}"
             WHERE estado = 'abierto' AND hablo = FALSE
             AND ultimo_mensaje <= CURRENT_TIMESTAMP - INTERVAL '3 hours'
         """
-        # Inactivos a las 24hs (si habían hablado)
+        # Inactivos a las 24hs (si habían hablado sin pagar)
         query_abandonados_24h = """
             SELECT channel_id FROM tickets 
             WHERE estado IN ('abierto', 'pausado') AND hablo = TRUE
@@ -690,22 +696,28 @@ Consulta actual del usuario: "{message.content}"
         
         try:
             async with self.bot.pool.acquire(timeout=15.0) as conn:
-                # 1. Limpiar completados (24hs)
+                # 1. Limpiar completados (Solo Rangos, ignorando las Sugerencias pagadas)
                 records_comp = await conn.fetch(query_completados)
                 for record in records_comp:
                     channel_id = int(record['channel_id'])
                     channel = self.bot.get_channel(channel_id)
                     if channel:
+                        # VERIFICACIÓN QUIRÚRGICA: Si es de la categoría o nombre de sugerencias, lo dejamos vivo
+                        es_sug = (channel.category_id == ID_CATEGORIA_SUGERENCIAS) or channel.name.startswith("sug-")
+                        if es_sug:
+                            continue # Salta este ticket, no lo borra de Discord ni de la BD
+                        
                         try:
-                            await channel.delete(reason="Limpieza automática: 24hs tras ticket completado.")
-                            print(f"🗑️ [Limpieza] Canal de ticket {channel_id} eliminado (24hs completado).")
+                            await channel.delete(reason="Limpieza automática: 24hs tras ticket de rango completado.")
+                            print(f"🗑️ [Limpieza] Canal de ticket de rango {channel_id} eliminado (24hs completado).")
                         except discord.Forbidden:
                             pass
                         except discord.HTTPException:
                             pass
+                    # Solo se ejecuta si no fue una sugerencia pagada
                     await conn.execute("DELETE FROM tickets WHERE channel_id = $1", channel_id)
 
-                # 2. Limpiar abandonados (3hs sin mensaje inicial)
+                # 2. Limpiar abandonados (3hs sin mensaje inicial - Aplica a TODOS)
                 records_aban3h = await conn.fetch(query_abandonados_3h)
                 for record in records_aban3h:
                     channel_id = int(record['channel_id'])
@@ -720,7 +732,7 @@ Consulta actual del usuario: "{message.content}"
                             pass
                     await conn.execute("DELETE FROM tickets WHERE channel_id = $1", channel_id)
                     
-                # 3. Limpiar abandonados (24hs inactividad luego de hablar)
+                # 3. Limpiar abandonados (24hs inactividad luego de hablar sin pagar - Aplica a TODOS)
                 records_aban24h = await conn.fetch(query_abandonados_24h)
                 for record in records_aban24h:
                     channel_id = int(record['channel_id'])
