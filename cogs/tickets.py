@@ -17,9 +17,9 @@ FABRIZIO_ID = 704501115110162542
 
 # Configuración de Roles y Precios estricta
 ROLES = {
-    "Diamante": {"id": 1423389000122499083, "ars": 4100, "usd": 4.0},
-    "Oro": {"id": 1423389001984905248, "ars": 3700, "usd": 3.5},
-    "Plata": {"id": 1478203883661820106, "ars": 2100, "usd": 2.0}
+    "Diamante": {"id": 1423389000122499083, "ars": 4700, "usd": 4.5},
+    "Oro": {"id": 1423389001984905248, "ars": 4200, "usd": 4.0},
+    "Plata": {"id": 1478203883661820106, "ars": 2200, "usd": 2.0}
 }
 
 # Diccionario de respuestas predefinidas para optimizar uso de API
@@ -182,7 +182,7 @@ class Tickets(commands.Cog):
                 )
                 embed.add_field(
                     name="💰 COSTO FIJO DE LA SOLICITUD", 
-                    value="🇦🇷 Argentina: $2.000 ARS\n🌍 Internacional: $2 USD", 
+                    value="🇦🇷 Argentina: $2,000 ARS\n🌍 Internacional: $2 USD", 
                     inline=False
                 )
                 embed.add_field(name="Alias (ARS):", value="LENGUA.LUJOSA.TELAR", inline=False)
@@ -214,7 +214,7 @@ class Tickets(commands.Cog):
                 )
                 embed.add_field(
                     name="📉 LISTA DE PRECIOS", 
-                    value="💎 Rango Diamante: 🇦🇷 Argentina: $4.100 ARS 🌍 Internacional: $4 USD\n🥇 Rango Oro: 🇦🇷 Argentina: $3.700 ARS 🌍 Internacional: $3,5 USD\n🥈 Rango Plata: 🇦🇷 Argentina: $2.100 ARS 🌍 Internacional: $2 USD", 
+                    value="💎 Rango Diamante: 🇦🇷 Argentina: $4,700 ARS 🌍 Internacional: $4,5 USD\n🥇 Rango Oro: 🇦🇷 Argentina: $4,200 ARS 🌍 Internacional: $4 USD\n🥈 Rango Plata: 🇦🇷 Argentina: $2,200 ARS 🌍 Internacional: $2 USD", 
                     inline=False
                 )
                 embed.add_field(name="Alias:", value="LENGUA.LUJOSA.TELAR", inline=False)
@@ -405,18 +405,18 @@ Contexto reciente del chat (puede contener el rol deseado o aclarar montos parci
 SOS UN AUDITOR FINANCIERO ESTRICTO. Analizá esta imagen o PDF para validar si es un comprobante de transferencia COMPLETADO (ej: Mercado Pago, Banco, PayPal) para la auditoría de Tito Calderón.
 REGLA CRÍTICA Y ESTRICTA: Debes verificar OBLIGATORIAMENTE que el destinatario de la transferencia sea 'Fabrizio Giovanni Cocca Ducay' (o Fabrizio Cocca), O que el correo destinatario sea 'sesarjavier28@gmail.com' (para el caso de PayPal). Si logras leer el nombre o correo del destinatario y es otra persona (por ejemplo, le están transfiriendo a un amigo u otro nombre), marca "es_comprobante": false.
 REGLA 1: Buscá evidencia de que el pago finalizó (ej: "Transferencia exitosa", "Pago realizado"). Ignorá capturas de 'pre-transferencia' o pantallas de confirmación sin ejecutar.
-REGLA 2: Si el formato numérico usa coma para miles (ej 4,100.00), convertilo a un número limpio (4100).
+REGLA 2: Si el formato numérico usa coma para miles (ej 4,700.00), convertilo a un número limpio (4700).
 REGLA 3 DE MONTO RANDOM: 
 - Si el monto NO coincide exactamente con un rango o combo, pero el usuario ESPECIFICÓ uno en el contexto, validalo contra ese.
 - Si el monto es random y el usuario NO especificó qué quería, devolvé 'necesita_preguntar': true.
 REGLA 4 (PRECIOS EXACTOS Y COMBOS): Compará el monto pagado con nuestros precios estrictos:
-- Diamante: $4100 ARS / $4 USD
-- Oro: $3700 ARS / $3.5 USD
-- Plata: $2100 ARS / $2 USD
-- Diamante + Oro: $7800 ARS / $7.5 USD
-- Diamante + Plata: $6200 ARS / $6 USD
-- Oro + Plata: $5800 ARS / $5.5 USD
-- LOS 3 RANGOS JUNTOS (Todos): $9900 ARS / $9.5 USD
+- Diamante: $4700 ARS / $4.5 USD
+- Oro: $4200 ARS / $4 USD
+- Plata: $2200 ARS / $2 USD
+- Diamante + Oro: $8900 ARS / $8.5 USD
+- Diamante + Plata: $6900 ARS / $6.5 USD
+- Oro + Plata: $6400 ARS / $6 USD
+- LOS 3 RANGOS JUNTOS (Todos): $11100 ARS / $10.5 USD
 REGLA 5: TUS DATOS DE COBRO (NUNCA INVENTES OTROS):
 - Alias: LENGUA.LUJOSA.TELAR
 - CBU: 3840200500000026286680
@@ -589,7 +589,7 @@ REGLAS DE NEGOCIO Y RESPUESTA (ESTRICTAS):
 4. EXIGIR RED SOCIAL: El usuario DEBE mandar una red social o URL de la modelo.
 5. ASINCRONÍA DE FOTOS: Si el usuario dice "ahí pasé la foto", "ya pagué" o "mandé el comprobante", responde: "¡Perfecto! El sistema de auditoría lo está analizando en este preciso momento." NO vuelvas a pedir la foto.
 6. ESTADO POST-VENTA (MEMORIA): Si en el HISTORIAL ves que el bot ya dijo "Pago de Petición Verificado con Éxito", tu objetivo cambió. NO pidas comprobantes ni sigas vendiendo. Agradecele y decile que Tito Calderón ya está procesando su pedido.
-7. PRIVACIDAD ABSOLUTA: El proceso es privado y anónimo.
+7. PRIVACIDAD ABSOLUTA: El proceso es privado and anónimo.
 8. ZERO TRUST: No des nada por válido solo con palabras si no ves la validación en el historial.
 
 Consulta actual del usuario: "{message.content}"
@@ -608,7 +608,7 @@ TUS DATOS DE COBRO ESTRICTOS:
 - Titular de la cuenta bancaria: Fabrizio Giovanni Cocca Ducay (o Fabrizio Cocca). Tito Calderón es solo el nombre del usuario/dueño del servidor.
 
 REGLAS DE NEGOCIO Y RESPUESTA (ESTRICTAS):
-1. PRECIOS: Diamante ($4100 ARS / $4 USD), Oro ($3700 ARS / $3.5 USD), Plata ($2100 ARS / $2 USD). Combos: Diamante+Oro ($7800 ARS / $7.5 USD), Diamante+Plata ($6200 ARS / $6 USD), Oro+Plata ($5800 ARS / $5.5 USD), Todos ($9900 ARS / $9.5 USD). NUNCA des otros precios.
+1. PRECIOS: Diamante ($4700 ARS / $4.5 USD), Oro ($4200 ARS / $4 USD), Plata ($2200 ARS / $2 USD). Combos: Diamante+Oro ($8900 ARS / $8.5 USD), Diamante+Plata ($6900 ARS / $6.5 USD), Oro+Plata ($6400 ARS / $6 USD), Todos ($11100 ARS / $10.5 USD). NUNCA des otros precios.
 2. RESPUESTAS CORTAS: Máximo 1 o 2 párrafos cortos (no más de 60 palabras). Sé directo.
 3. IDENTIDAD BANCARIA: Si preguntan por el nombre del destinatario del pago o titular, es Fabrizio Giovanni Cocca Ducay.
 4. ASINCRONÍA DE FOTOS: Si el usuario dice "ya lo mandé", "ahí pasé el comprobante", responde: "¡Buenísimo! El sistema automático de auditoría lo está analizando en este momento." NO le pidas que envíe la foto de nuevo.
@@ -658,17 +658,17 @@ Consulta actual del usuario: "{message.content}"
                                 try:
                                     async with self.bot.pool.acquire(timeout=5.0) as conn:
                                         for r_name in nombres_roles_asignados:
-                                            monto_estimado = ROLES[r_name]["ars"] 
+                                            monto_estimated = ROLES[r_name]["ars"] 
                                             await conn.execute(
                                                 "INSERT INTO pagos (user_id, monto, moneda, rol) VALUES ($1, $2, $3, $4)",
-                                                message.author.id, monto_estimado, "ARS", r_name
+                                                message.author.id, monto_estimated, "ARS", r_name
                                             )
                                 except Exception as e:
                                     print(f"❌ [DB Error] No se pudo registrar el pago aclarado en la tabla 'pagos': {e}")
                             except discord.Forbidden:
                                 print(f"❌ Error de Jerarquía: El bot no tiene permisos suficientes para dar los roles: {nombres_roles_asignados}")
 
-        except asyncio.TimeoutError:
+        except asyncio.timeout_error:
             await message.reply("⚠️ **IA Congestionada**: Los servidores de Google están tardando en responder. Tu consulta es importante; por favor, intentá preguntar de nuevo en un instante.")
         except Exception as e:
             print(f"❌ [IA Support Error]: {e}")
