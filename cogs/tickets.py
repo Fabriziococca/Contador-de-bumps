@@ -15,7 +15,7 @@ ID_CATEGORIA_SUGERENCIAS = 1510095191275737088
 ID_CANAL_PROMO_TEST = 1503937966748205056
 FABRIZIO_ID = 704501115110162542
 
-# Configuración de Roles y Precios estricta
+# Configuración de Roles y Precios estricta (Sin puntos como separador de miles)
 ROLES = {
     "Diamante": {"id": 1423389000122499083, "ars": 4700, "usd": 4.5},
     "Oro": {"id": 1423389001984905248, "ars": 4200, "usd": 4.0},
@@ -67,15 +67,14 @@ class Tickets(commands.Cog):
                 hablo BOOLEAN DEFAULT FALSE
             )
         """
-        # Crear tabla de pagos
+        # Crear tabla de pagos alineada estrictamente al esquema real de tu NeonDB (image_34f7af.png)
         query_pagos = """
             CREATE TABLE IF NOT EXISTS pagos (
-                id SERIAL PRIMARY KEY,
+                pago_id SERIAL PRIMARY KEY,
                 user_id BIGINT,
-                monto NUMERIC,
-                moneda TEXT,
-                rol TEXT,
-                fecha TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                ticket_id BIGINT,
+                monto NUMERIC(10, 2),
+                moneda TEXT
             )
         """
         try:
@@ -138,7 +137,7 @@ class Tickets(commands.Cog):
             print(f"🔄 [CONMUTACIÓN CRÍTICA] Pool de 5 modelos agotado para API Key índice {indice_viejo}. Saltando a API Key índice {self.current_key_index} para reiniciar ciclo entero...")
             
         # Si salimos de ambos bucles, las dos llaves consumieron sus cuotas diarias o colapsaron por completo
-        raise Exception("🚨 [EXCEPCIÓN CRÍTICA FINAL] Ambas API Keys agotaron de manera consecutiva el pool de 5 modelos funcionales.")
+        raise Exception("🚨 [EXCEPCIÓN CRÍTICA FINAL] Ambas API Keys agotaron de manera演 consecutiva el pool de 5 modelos funcionales.")
 
     @commands.Cog.listener()
     async def on_guild_channel_create(self, channel):
@@ -177,12 +176,12 @@ class Tickets(commands.Cog):
             if channel and (channel.category_id == ID_CATEGORIA_SUGERENCIAS or channel.name.startswith("sug-")):
                 embed = discord.Embed(
                     title="💎 Petición Única de Modelos", 
-                    description="Elegí la chica que querés incorporar al catálogo de forma 100% privada.", 
+                    description="Elegí la chica que querés incorporar al catálogo de forma 100% privada o utiliza tus puntos acumulados.", 
                     color=0x1DB954 # Color Verde Premium Estilo Spotify
                 )
                 embed.add_field(
-                    name="💰 COSTO FIJO DE LA SOLICITUD", 
-                    value="🇦🇷 Argentina: $2,000 ARS\n🌍 Internacional: $2 USD", 
+                    name="💰 OPCIÓN A: COSTO FIJO DE LA SOLICITUD", 
+                    value="🇦🇷 Argentina: $2000 ARS\n🌍 Internacional: $2 USD", 
                     inline=False
                 )
                 embed.add_field(name="Alias (ARS):", value="LENGUA.LUJOSA.TELAR", inline=False)
@@ -193,13 +192,18 @@ class Tickets(commands.Cog):
                     inline=False
                 )
                 embed.add_field(
-                    name="✅ ¿Cómo proceder? Seguí estos pasos:", 
+                    name="🎁 OPCIÓN B: CANJEAR POR BUMPS (GRATIS)",
+                    value="Si acumulaste **30 Bumps** apoyando al servidor con el sistema Disboard, podés canjearlos por esta petición.\n\n👉 Para proceder con esta opción, simplemente escribí acá en el chat: **'Quiero canjear mis puntos'** y aguardá las indicaciones de la administración.",
+                    inline=False
+                )
+                embed.add_field(
+                    name="✅ ¿Cómo proceder con el pago? Seguí estos pasos:", 
                     value="1. Envía la foto o PDF del comprobante de pago de la sugerencia.\n2. Enviá una **red social o URL de la modelo** (Instagram, Twitter, OnlyFans, TikTok, etc.) para procesar la búsqueda.\n3. El bot validará el monto y **Tito Calderón** se encargará de procesar e incorporar el canal.\n\n*🛡️ Garantía Absoluta*: Si el contenido solicitado no se encuentra disponible, **se te devuelve el dinero de inmediato**.", 
                     inline=False
                 )
                 embed.add_field(
                     name="⚠️ INFORMACION DE INFRAESTRUCTURA (CUPOS LIMITADOS)",
-                    value="Discord prohíbe tener más de 500 canales en total por servidor. Actualmente estamos cerca de ese numero, lo que nos deja un margen operativo ajustado. Por este motivo, **el precio de las peticiones irá aumentando progresivamente** a medida que se completen los canales para regular el almacenamiento.",
+                    value="Discord prohíbe tener más de 500 canales en total por servidor. Actualmente estamos cerca de ese numero, lo que nos deja un margen operativo ajustado. Por este motivo, **el precio de las peticiones e intercambios irá aumentando progresivamente** a medida que se completen los canales para regular el almacenamiento.",
                     inline=False
                 )
                 bienvenida = (
@@ -214,7 +218,7 @@ class Tickets(commands.Cog):
                 )
                 embed.add_field(
                     name="📉 LISTA DE PRECIOS", 
-                    value="💎 Rango Diamante: 🇦🇷 Argentina: $4,700 ARS 🌍 Internacional: $4,5 USD\n🥇 Rango Oro: 🇦🇷 Argentina: $4,200 ARS 🌍 Internacional: $4 USD\n🥈 Rango Plata: 🇦🇷 Argentina: $2,200 ARS 🌍 Internacional: $2 USD", 
+                    value="💎 Rango Diamante: 🇦🇷 Argentina: $4700 ARS 🌍 Internacional: $4,5 USD\n🥇 Rango Oro: 🇦🇷 Argentina: $4200 ARS 🌍 Internacional: $4 USD\n🥈 Rango Plata: 🇦🇷 Argentina: $2200 ARS 🌍 Internacional: $2 USD", 
                     inline=False
                 )
                 embed.add_field(name="Alias:", value="LENGUA.LUJOSA.TELAR", inline=False)
@@ -280,6 +284,28 @@ class Tickets(commands.Cog):
             print(f"❌ [DB Error] al pausar ticket {interaction.channel.id}: {e}")
             await interaction.response.send_message("❌ Hubo un error al intentar pausar la IA.", ephemeral=True)
 
+    # --- COMANDO ADMINISTRATIVO EXCLUSIVO: CANJEAR PUNTOS DE BUMPS MANUALMENTE (user_id as TEXT) ---
+    @app_commands.command(name="canjear", description="Descuenta 30 puntos a un usuario para realizar un canje manual de modelo")
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.describe(usuario="El miembro al que se le descontarán los 30 puntos de la billetera virtual")
+    async def canjear_puntos(self, interaction: discord.Interaction, usuario: discord.User):
+        user_str = str(usuario.id) # Forzamos formato string para concordancia estricta con tu NeonDB (image_34f7a9.png)
+        try:
+            async with self.bot.pool.acquire(timeout=5.0) as conn:
+                current_count = await conn.fetchval("SELECT count FROM bumps WHERE user_id = $1", user_str)
+                
+                if current_count is None or current_count < 30:
+                    puntos_actuales = current_count if current_count is not None else 0
+                    await interaction.response.send_message(f"⚠️ El usuario {usuario.mention} no tiene suficientes puntos acumulados (Tiene: {puntos_actuales}/30).", ephemeral=True)
+                    return
+                
+                # Descuento atómico de 30 puntos
+                await conn.execute("UPDATE bumps SET count = count - 30 WHERE user_id = $1", user_str)
+                await interaction.response.send_message(f"✅ **Canje Procesado con Éxito**\nSe han descontado 30 puntos de la billetera virtual de {usuario.mention}.\nSaldo restante: **{current_count - 30} puntos**.")
+        except Exception as e:
+            print(f"❌ [DB Error] Error al ejecutar el comando de canjear puntos: {e}")
+            await interaction.response.send_message("❌ Ocurrió un inconveniente en el motor de la base de datos al intentar procesar el canje.", ephemeral=True)
+
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if message.author.bot or message.content.startswith('/'):
@@ -326,6 +352,12 @@ class Tickets(commands.Cog):
         # Registrar actividad y actualizar timestamp
         await self._update_ticket_activity(message)
 
+        # --- INTERCEPCIÓN DE CLÁUSULA DE CANJE DE RECOMPENSAS (ANTI-IA DESTRUCCIÓN) ---
+        contenido_limpio = message.content.strip().lower()
+        if "canjear" in contenido_limpio and "puntos" in contenido_limpio:
+            await message.reply(f"¡Perfecto! Veo que querés realizar el intercambio de tus puntos acumulados por una petición única de modelo. 💎\nPor favor, aguardá un momento a que <@{FABRIZIO_ID}> revise la disponibilidad de la chica solicitada. Si todo está correcto, procesará el descuento manual de tus 30 puntos.")
+            return
+
         # Intercepción asincrónica de comprobantes (Foto o PDF)
         has_valid_attachment = any(att.content_type and (att.content_type.startswith('image/') or att.content_type == 'application/pdf') for att in message.attachments)
         if message.attachments and has_valid_attachment:
@@ -333,7 +365,6 @@ class Tickets(commands.Cog):
             return
 
         # Respuestas rápidas locales
-        contenido_limpio = message.content.strip().lower()
         if contenido_limpio in RESPUESTAS_PREDEFINIDAS:
             await message.reply(RESPUESTAS_PREDEFINIDAS[contenido_limpio])
             return
@@ -475,11 +506,12 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
                     
                     await self._marcar_ticket_completado(message.channel.id)
 
+                    # INSERCIÓN EXACTA SIN COLUMNAS INVENTADAS (image_34f7af.png)
                     try:
                         async with self.bot.pool.acquire(timeout=5.0) as conn:
                             await conn.execute(
-                                "INSERT INTO pagos (user_id, monto, moneda, rol) VALUES ($1, $2, $3, $4)",
-                                message.author.id, float(datos.get('monto', 0)), datos.get('moneda', 'ARS'), "Petición Chica"
+                                "INSERT INTO pagos (user_id, ticket_id, monto, moneda) VALUES ($1, $2, $3, $4)",
+                                message.author.id, message.channel.id, float(datos.get('monto', 0)), datos.get('moneda', 'ARS')
                             )
                     except Exception as e:
                         print(f"❌ [DB Error] No se pudo registrar el pago en la tabla 'pagos': {e}")
@@ -525,13 +557,14 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
                 
                 await self._marcar_ticket_completado(message.channel.id)
 
+                # INSERCIÓN EXACTA SIN COLUMNAS INVENTADAS (image_34f7af.png)
                 try:
                     async with self.bot.pool.acquire(timeout=5.0) as conn:
                         monto_num = float(datos.get('monto', 0))
                         moneda_str = datos.get('moneda', 'ARS')
                         await conn.execute(
-                            "INSERT INTO pagos (user_id, monto, moneda, rol) VALUES ($1, $2, $3, $4)",
-                            message.author.id, monto_num, moneda_str, rol
+                            "INSERT INTO pagos (user_id, ticket_id, monto, moneda) VALUES ($1, $2, $3, $4)",
+                            message.author.id, message.channel.id, monto_num, moneda_str
                         )
                 except Exception as e:
                     print(f"❌ [DB Error] No se pudo registrar el pago en la tabla 'pagos': {e}")
@@ -539,7 +572,7 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
             except discord.Forbidden:
                 await advertencia.edit(content="❌ **Error de Permisos**: No tengo los permisos de jerarquía necesarios para asignar el rol.")
 
-        except asyncio.TimeoutError:
+        except TimeoutError: # Arreglado: Se usa el constructor nativo de Python para evitar fallos de asyncio attribute
             await advertencia.edit(content="⏳ **Servidores saturados**: ¡Recibimos tu comprobante! Pero los servidores de Google están bajo mucha carga ahora mismo. **No es un error de tu pago**. Por favor, volvé a subir la foto en 1 o 2 minutos para que el bot pueda procesarla.")
         except json.JSONDecodeError:
             print(f"❌ [IA JSON Error] Texto recibido: {text}")
@@ -584,13 +617,14 @@ TUS DATOS DE COBRO ESTRICTOS:
 
 REGLAS DE NEGOCIO Y RESPUESTA (ESTRICTAS):
 1. PRECIO FIJO: Cada petición cuesta $2000 ARS o $2 USD.
-2. RESPUESTAS CORTAS: Máximo 1 o 2 párrafos cortos (no más de 60 palabras). Sé directo y al grano.
-3. IDENTIDAD BANCARIA: Si preguntan el nombre del titular o a quién transferir, es Fabrizio Giovanni Cocca Ducay.
-4. EXIGIR RED SOCIAL: El usuario DEBE mandar una red social o URL de la modelo.
-5. ASINCRONÍA DE FOTOS: Si el usuario dice "ahí pasé la foto", "ya pagué" o "mandé el comprobante", responde: "¡Perfecto! El sistema de auditoría lo está analizando en este preciso momento." NO vuelvas a pedir la foto.
-6. ESTADO POST-VENTA (MEMORIA): Si en el HISTORIAL ves que el bot ya dijo "Pago de Petición Verificado con Éxito", tu objetivo cambió. NO pidas comprobantes ni sigas vendiendo. Agradecele y decile que Tito Calderón ya está procesando su pedido.
-7. PRIVACIDAD ABSOLUTA: El proceso es privado and anónimo.
-8. ZERO TRUST: No des nada por válido solo con palabras si no ves la validación en el historial.
+2. REGLA DE BUMPS: Si el usuario menciona que quiere hacer un canje de puntos de su billetera virtual, recuérdale amablemente que debe escribir explícitamente "Quiero canjear mis puntos" para que el sistema conmute su ticket y dé aviso a Tito Calderón para atenderlo.
+3. RESPUESTAS CORTAS: Máximo 1 o 2 párrafos cortos (no más de 60 palabras). Sé directo y al grano.
+4. IDENTIDAD BANCARIA: Si preguntan el nombre del titular o a quién transferir, es Fabrizio Giovanni Cocca Ducay.
+5. EXIGIR RED SOCIAL: El usuario DEBE mandar una red social o URL de la modelo.
+6. ASINCRONÍA DE FOTOS: Si el usuario dice "ahí pasé la foto", "ya pagué" o "mandé el comprobante", responde: "¡Perfecto! El sistema de auditoría lo está analizando en este preciso momento." NO vuelvas a pedir la foto.
+7. ESTADO POST-VENTA (MEMORIA): Si en el HISTORIAL ves que el bot ya dijo "Pago de Petición Verificado con Éxito", tu objetivo cambió. NO pidas comprobantes ni sigas vendiendo. Agradecele y decile que Tito Calderón ya está procesando su pedido.
+8. PRIVACIDAD ABSOLUTA: El proceso es privado y anónimo.
+9. ZERO TRUST: No des nada por válido solo con palabras si no ves la validación en el historial.
 
 Consulta actual del usuario: "{message.content}"
 """
@@ -654,21 +688,21 @@ Consulta actual del usuario: "{message.content}"
                                 await message.channel.send(f"✅ Sistema: Rol/es **{roles_str}** asignado/s tras aclaración.\n🔔 <@{FABRIZIO_ID}> auditoría manual/aclaración completada.")
                                 await self._marcar_ticket_completado(message.channel.id)
 
-                                # Registrar cada pago impactado en NeonDB de forma independiente
+                                # Registrar cada pago impactado en NeonDB de forma independiente (image_34f7af.png)
                                 try:
                                     async with self.bot.pool.acquire(timeout=5.0) as conn:
                                         for r_name in nombres_roles_asignados:
-                                            monto_estimated = ROLES[r_name]["ars"] 
+                                            monto_estimado = ROLES[r_name]["ars"] 
                                             await conn.execute(
-                                                "INSERT INTO pagos (user_id, monto, moneda, rol) VALUES ($1, $2, $3, $4)",
-                                                message.author.id, monto_estimated, "ARS", r_name
+                                                "INSERT INTO pagos (user_id, ticket_id, monto, moneda) VALUES ($1, $2, $3, $4)",
+                                                message.author.id, message.channel.id, float(monto_estimado), "ARS"
                                             )
                                 except Exception as e:
                                     print(f"❌ [DB Error] No se pudo registrar el pago aclarado en la tabla 'pagos': {e}")
                             except discord.Forbidden:
                                 print(f"❌ Error de Jerarquía: El bot no tiene permisos suficientes para dar los roles: {nombres_roles_asignados}")
 
-        except asyncio.timeout_error:
+        except TimeoutError: # Arreglado: Uso correcto de la excepción nativa
             await message.reply("⚠️ **IA Congestionada**: Los servidores de Google están tardando en responder. Tu consulta es importante; por favor, intentá preguntar de nuevo en un instante.")
         except Exception as e:
             print(f"❌ [IA Support Error]: {e}")
@@ -756,7 +790,6 @@ Consulta actual del usuario: "{message.content}"
     async def before_cleanup(self):
         await self.bot.wait_until_ready()
 
-    
     # --- 📣 LÓGICA DE REMARKETING ORGÁNICO PROGRAMADO (CANAL DE TESTEO) ---
     @tasks.loop(hours=168) # 168 horas = 7 días de ciclo estricto de recontacto
     async def auto_promo_refresh(self):
