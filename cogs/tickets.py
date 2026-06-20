@@ -414,6 +414,8 @@ Contexto reciente del chat:
 
 SOS UN AUDITOR FINANCIERO ESTRICTO. Analizá esta imagen o PDF para validar si es un comprobante de transferencia COMPLETADO (ej: Mercado Pago, Banco, PayPal) para la PETICIÓN ÚNICA DE MODELO de Tito Calderón.
 REGLA CRÍTICA Y ESTRICTA: Devues verificar OBLIGATORIAMENTE que el destinatario de la transferencia sea 'Fabrizio Giovanni Cocca Ducay' (o Fabrizio Cocca), O que el correo destinatario sea 'sesarjavier28@gmail.com' (para el caso de PayPal). Si es otra persona, marca "es_comprobante": false.
+REGLA BANCARIA ARS: Si la moneda es pesos (ARS), debes validar obligatoriamente que el banco o entidad financiera de destino/recepción sea estrictamente 'Uala Bank S.A.U' (o Ualá). Si el comprobante muestra que fue enviado a 'Mercado Pago' u otra entidad como destino, se trata de una plantilla falsa; marca automáticamente "es_comprobante": false de forma silenciosa.
+REGLA ANTI-DUPLICADOS: Si detectás que el usuario envía imágenes clonadas con el mismo número de operación o exactamente la misma hora/minuto en el historial, marca "es_comprobante": false.
 REGLA 1: Buscá evidencia de que el pago finalizó (ej: "Transferencia exitosa", "Pago realizado").
 REGLA 2: El costo de la sugerencia es exactamente $2000 ARS o $2 USD. Si el monto coincide o supera este valor, marca "valido": true. Caso contrario, marca "valido": false.
 
@@ -435,6 +437,8 @@ Contexto reciente del chat (puede contener el rol deseado o aclarar montos parci
 
 SOS UN AUDITOR FINANCIERO ESTRICTO. Analizá esta imagen o PDF para validar si es un comprobante de transferencia COMPLETADO (ej: Mercado Pago, Banco, PayPal) para la auditoría de Tito Calderón.
 REGLA CRÍTICA Y ESTRICTA: Debes verificar OBLIGATORIAMENTE que el destinatario de la transferencia sea 'Fabrizio Giovanni Cocca Ducay' (o Fabrizio Cocca), O que el correo destinatario sea 'sesarjavier28@gmail.com' (para el caso de PayPal). Si logras leer el nombre o correo del destinatario y es otra persona (por ejemplo, le están transfiriendo a un amigo u otro nombre), marca "es_comprobante": false.
+REGLA BANCARIA ARS CRÍTICA: Si la transferencia es en pesos (ARS), debes verificar obligatoriamente que el banco o entidad receptora de destino sea estrictamente 'Uala Bank S.A.U' (o Ualá). Si la imagen indica que el destino receptor es 'Mercado Pago' u otra entidad diferente, es una falsificación de plantilla; marca automáticamente "es_comprobante": false de forma silenciosa.
+REGLA ANTI-DUPLICADOS: Si en el contexto o imágenes detectás el mismo número de operación, ID de transacción o exactamente la misma hora y minuto repetida (envíos clonados), marca "es_comprobante": false.
 REGLA 1: Buscá evidencia de que el pago finalizó (ej: "Transferencia exitosa", "Pago realizado"). Ignorá capturas de 'pre-transferencia' o pantallas de confirmación sin ejecutar.
 REGLA 2: Si el formato numérico usa coma para miles (ej 4,700.00), convertilo a un número limpio (4700).
 REGLA 3 DE MONTO RANDOM: 
@@ -501,12 +505,7 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
                     msg_exito = f"✅ **¡Pago de Petición Verificado con Éxito!**\nEl bot detectó e impactó un pago correcto de **{datos['monto']} {datos['moneda']}**."
                     await advertencia.edit(content=msg_exito)
                     
-                    # Mensaje nuevo para generar notificación push en Discord
-                    await message.channel.send(content=f"🔔 <@{FABRIZIO_ID}> ¡Petición de canal recibida! Vení al ticket a ver qué red social de la modelo envió el usuario.")
-                    
-                    await self._marcar_ticket_completado(message.channel.id)
-
-                    # INSERCIÓN EXACTA SIN COLUMNAS INVENTADAS (image_34f7af.png)
+                    # Enlace estructurado a pagos real de NeonDB
                     try:
                         async with self.bot.pool.acquire(timeout=5.0) as conn:
                             await conn.execute(
@@ -515,6 +514,11 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
                             )
                     except Exception as e:
                         print(f"❌ [DB Error] No se pudo registrar el pago en la tabla 'pagos': {e}")
+                    
+                    # Mensaje nuevo para generar notificación push en Discord
+                    await message.channel.send(content=f"🔔 <@{FABRIZIO_ID}> ¡Petición de canal recibida! Vení al ticket a ver qué red social de la modelo envió el usuario.")
+                    
+                    await self._marcar_ticket_completado(message.channel.id)
                 return
 
             # --- GESTIÓN DE AUDITORÍA EN CANAL DE RANGOS ---
@@ -552,12 +556,7 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
                 msg_exito = f"✅ **¡Pago Verificado con Éxito!**\nSe te ha otorgado el rol **{rol}** automáticamente."
                 await advertencia.edit(content=msg_exito)
                 
-                # Mensaje nuevo para generar notificación push en Discord
-                await message.channel.send(content=f"🔔 <@{FABRIZIO_ID}> auditoría automática completada.")
-                
-                await self._marcar_ticket_completado(message.channel.id)
-
-                # INSERCIÓN EXACTA SIN COLUMNAS INVENTADAS (image_34f7af.png)
+                # Enlace estructurado a pagos real de NeonDB
                 try:
                     async with self.bot.pool.acquire(timeout=5.0) as conn:
                         monto_num = float(datos.get('monto', 0))
@@ -569,10 +568,15 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
                 except Exception as e:
                     print(f"❌ [DB Error] No se pudo registrar el pago en la tabla 'pagos': {e}")
                 
+                # Mensaje nuevo para generar notificación push en Discord
+                await message.channel.send(content=f"🔔 <@{FABRIZIO_ID}> auditoría automática completada.")
+                
+                await self._marcar_ticket_completado(message.channel.id)
+                
             except discord.Forbidden:
                 await advertencia.edit(content="❌ **Error de Permisos**: No tengo los permisos de jerarquía necesarios para asignar el rol.")
 
-        except TimeoutError: # Arreglado: Se usa el constructor nativo de Python para evitar fallos de asyncio attribute
+        except asyncio.TimeoutError:
             await advertencia.edit(content="⏳ **Servidores saturados**: ¡Recibimos tu comprobante! Pero los servidores de Google están bajo mucha carga ahora mismo. **No es un error de tu pago**. Por favor, volvé a subir la foto en 1 o 2 minutos para que el bot pueda procesarla.")
         except json.JSONDecodeError:
             print(f"❌ [IA JSON Error] Texto recibido: {text}")
@@ -702,7 +706,7 @@ Consulta actual del usuario: "{message.content}"
                             except discord.Forbidden:
                                 print(f"❌ Error de Jerarquía: El bot no tiene permisos suficientes para dar los roles: {nombres_roles_asignados}")
 
-        except TimeoutError: # Arreglado: Uso correcto de la excepción nativa
+        except asyncio.TimeoutError:
             await message.reply("⚠️ **IA Congestionada**: Los servidores de Google están tardando en responder. Tu consulta es importante; por favor, intentá preguntar de nuevo en un instante.")
         except Exception as e:
             print(f"❌ [IA Support Error]: {e}")
