@@ -37,6 +37,7 @@ class Tickets(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.mi_id = FABRIZIO_ID # Tu ID de usuario para detección de menciones
+        self.fallos_tickets = {} # Memoria RAM para el control defensivo y disyuntor de fallos por canal
         
         # --- ARQUITECTURA DEFENSIVA: Pool secuencial de 5 modelos funcionales validados ---
         self.model_pool = [
@@ -250,6 +251,11 @@ class Tickets(commands.Cog):
         user_id = member.id
         query = "SELECT channel_id FROM tickets WHERE user_id = $1"
         try:
+            # Limpiamos la caché de fallos del usuario para liberar RAM de forma defensiva
+            for ch in list(self.fallos_tickets.keys()):
+                if ch in self.fallos_tickets:
+                    self.fallos_tickets.pop(ch, None)
+                    
             async with self.bot.pool.acquire(timeout=5.0) as conn:
                 records = await conn.fetch(query, user_id)
                 for record in records:
@@ -395,6 +401,7 @@ class Tickets(commands.Cog):
             
         advertencia = await message.channel.send("⏳ **Auditoría IA**: Analizando comprobante de pago...")
         es_sugerencia = (getattr(message.channel, 'category_id', None) == ID_CATEGORIA_SUGERENCIAS) or message.channel.name.startswith("sug-")
+        ch_id = message.channel.id
 
         try:
             image_data = await attachment.read()
@@ -416,6 +423,7 @@ SOS UN AUDITOR FINANCIERO ESTRICTO. Analizá esta imagen o PDF para validar si e
 REGLA CRÍTICA Y ESTRICTA: Devues verificar OBLIGATORIAMENTE que el destinatario de la transferencia sea 'Fabrizio Giovanni Cocca Ducay' (o Fabrizio Cocca), O que el correo destinatario sea 'sesarjavier28@gmail.com' (para el caso de PayPal). Si es otra persona, marca "es_comprobante": false.
 REGLA BANCARIA ARS: Si la moneda es pesos (ARS), debes validar obligatoriamente que el banco o entidad financiera de destino/recepción sea estrictamente 'Uala Bank S.A.U' (o Ualá). Si el comprobante muestra que fue enviado a 'Mercado Pago' u otra entidad como destino, se trata de una plantilla falsa; marca automáticamente "es_comprobante": false de forma silenciosa.
 REGLA ANTI-DUPLICADOS: Si detectás que el usuario envía imágenes clonadas con el mismo número de operación o exactamente la misma hora/minuto en el historial, marca "es_comprobante": false.
+REGLA PAYPAL MONEDA EXTRANJERA (BIMONETARIO): Si la imagen o PDF corresponde a un recibo de PayPal emitido en una divisa local extranjera (como Pesos Mexicanos MXN, Pesos Chilenos CLP, Euros EUR, etc.), debes buscar obligatoriamente en todo el texto del documento el desglose de conversión o el valor neto equivalente reflejado en Dólares (USD) (por ejemplo: "$2.17 USD" o "$2.00 USD" al lado de "$40.00 MXN"). Si encuentras que este equivalente neto convertido a USD cumple con nuestro costo fijo de $2 USD, debes considerarlo válido y marcar "valido": true, "moneda": "USD" y asignar a "monto" el valor flotante neto en USD hallado.
 REGLA 1: Buscá evidencia de que el pago finalizó (ej: "Transferencia exitosa", "Pago realizado").
 REGLA 2: El costo de la sugerencia es exactamente $2000 ARS o $2 USD. Si el monto coincide o supera este valor, marca "valido": true. Caso contrario, marca "valido": false.
 
@@ -439,6 +447,7 @@ SOS UN AUDITOR FINANCIERO ESTRICTO. Analizá esta imagen o PDF para validar si e
 REGLA CRÍTICA Y ESTRICTA: Debes verificar OBLIGATORIAMENTE que el destinatario de la transferencia sea 'Fabrizio Giovanni Cocca Ducay' (o Fabrizio Cocca), O que el correo destinatario sea 'sesarjavier28@gmail.com' (para el caso de PayPal). Si logras leer el nombre o correo del destinatario y es otra persona (por ejemplo, le están transfiriendo a un amigo u otro nombre), marca "es_comprobante": false.
 REGLA BANCARIA ARS CRÍTICA: Si la transferencia es en pesos (ARS), debes verificar obligatoriamente que el banco o entidad receptora de destino sea estrictamente 'Uala Bank S.A.U' (o Ualá). Si la imagen indica que el destino receptor es 'Mercado Pago' u otra entidad diferente, es una falsificación de plantilla; marca automáticamente "es_comprobante": false de forma silenciosa.
 REGLA ANTI-DUPLICADOS: Si en el contexto o imágenes detectás el mismo número de operación, ID de transacción o exactamente la misma hora y minuto repetida (envíos clonados), marca "es_comprobante": false.
+REGLA PAYPAL MONEDA EXTRANJERA (BIMONETARIO): Si el comprobante corresponde a un recibo de PayPal emitido en una divisa de cuenta local extranjera (por ejemplo: MXN, CLP, EUR, etc.), tienes la obligación estricta de buscar en el documento el desglose secundario o la equivalencia neta final en Dólares (USD) (por ejemplo, "$2.17 USD", "$4.50 USD", etc.). Compara ese valor neto convertido a USD contra nuestros precios y combos fijos en dólares. Si coincide o supera el precio del rango o combo solicitado, marca "valido": true, "moneda": "USD" y asigna a "monto" el valor flotante neto correspondiente en USD.
 REGLA 1: Buscá evidencia de que el pago finalizó (ej: "Transferencia exitosa", "Pago realizado"). Ignorá capturas de 'pre-transferencia' o pantallas de confirmación sin ejecutar.
 REGLA 2: Si el formato numérico usa coma para miles (ej 4,700.00), convertilo a un número limpio (4700).
 REGLA 3 DE MONTO RANDOM: 
@@ -485,52 +494,81 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
                 
             datos = json.loads(text)
 
-            if not datos.get("es_comprobante"):
-                await advertencia.edit(content="❌ **Auditoría Fallida**: No es válido, puede ser un fallo del bot, enviá la foto porfa y ahí vemos qué pasó.")
-                return
-
-            if datos.get("necesita_preguntar"):
-                await advertencia.edit(content=f"🤔 **Monto no reconocido**: Detectamos un pago de **{datos.get('monto')} {datos.get('moneda')}**, pero no coincide con ningún rango exacto y no especificaste cuál querías en el chat. ¿Podés aclarar qué rangos estás comprando?")
-                return
-
+            # --- ARQUITECTURA DEFENSIVA: DISYUNTOR Y FILTRO DE FALLOS SECUENCIALES ---
             rol = datos.get("rol_detectado")
-            valido = datos.get("valido", False)
+            valido_bool = datos.get("valido", False)
+            es_comprobante_bool = datos.get("es_comprobante", False)
+            necesita_preguntar_bool = datos.get("necesita_preguntar", False)
+            
+            # Chequeo estricto de éxito de la transacción
+            audit_exitosa = es_comprobante_bool and valido_bool and not necesita_preguntar_bool
+            if not es_sugerencia and audit_exitosa:
+                if not rol or (rol not in ROLES and rol != "Todos" and "," not in rol):
+                    audit_exitosa = False
+
+            if not audit_exitosa:
+                self.fallos_tickets[ch_id] = self.fallos_tickets.get(ch_id, 0) + 1
+                total_fallos = self.fallos_tickets[ch_id]
+                
+                # UMBRAL CRÍTICO 5: Modo Manual Forzado con Mención Push Administrativa
+                if total_fallos >= 5:
+                    try:
+                        async with self.bot.pool.acquire(timeout=5.0) as conn:
+                            await conn.execute("UPDATE tickets SET estado = 'pausado' WHERE channel_id = $1", ch_id)
+                        await message.channel.send(content=f"🔔 <@{FABRIZIO_ID}> El búnker detectó {total_fallos} fallos consecutivos de auditoría automática en este ticket. Pasando control a revisión manual.")
+                        await advertencia.edit(content="🛑 **Modo Manual Automático**: Se alcanzó el límite de intentos automáticos de validación. Pasamos tu caso a revisión manual de forma inmediata. El administrador ya fue notificado y revisará tu transacción a la brevedad. Quedate tranquilo, tu compra está segura.")
+                    except Exception as db_err:
+                        print(f"❌ Error al pausar ticket por fallos acumulados: {db_err}")
+                    return
+                
+                # UMBRAL CONTROL DE DAÑOS 3 y 4: Tip Inteligente de Divisas
+                elif total_fallos >= 3:
+                    await advertencia.edit(content="⚠️ **Aviso de Soporte**: Seguimos sin poder validar el archivo de forma automática. Si estás realizando tu pago por PayPal desde fuera de Argentina, recordá que el bot busca estrictamente el reflejo del monto neto convertido a Dólares (USD). Por favor, asegúrate de enviar la captura extendida completa donde figure la conversión limpia a USD para que pueda ser detectada.")
+                    return
+                
+                # UMBRAL ESTÁNDAR 1 y 2: Respuestas Profesionales Rediseñadas
+                else:
+                    if not es_comprobante_bool:
+                        await advertencia.edit(content="❌ **Auditoría Fallida**: El sistema no pudo procesar este archivo de forma automática. Asegurate de que la captura de pantalla o PDF sea nítida, esté completa y muestre claramente el destinatario, el monto final y el número de operación.")
+                    elif necesita_preguntar_bool:
+                        await advertencia.edit(content=f"🤔 **Monto no reconocido**: Detectamos un pago de **{datos.get('monto')} {datos.get('moneda')}**, pero no coincide con ningún rango exacto y no especificaste cuál querías en el chat. ¿Podés aclarar qué rangos estás comprando?")
+                    elif not valido_bool:
+                        if es_sugerencia:
+                            await advertencia.edit(content=f"⚠️ **Comprobante Insuficiente**\nEl pago detectado de **{datos['monto']} {datos['moneda']}** no es suficiente para procesar la petición.\nEl costo fijo es de $2000 ARS / $2 USD. Por favor, abona el resto y envía el comprobante completo.")
+                        else:
+                            diferencia = float(datos.get("diferencia", 0.0))
+                            faltante = abs(diferencia)
+                            await advertencia.edit(content=f"⚠️ **Comprobante Insuficiente**\nEl pago detectado de **{datos['monto']} {datos['moneda']}** no es suficiente para el rol solicitado.\nFaltan **{faltante} {datos['moneda']}**. Por favor, abona el resto y envía el nuevo comprobante.")
+                    else:
+                        await advertencia.edit(content=f"⚠️ **Atención**: Comprobante de {datos.get('monto', 0)} {datos.get('moneda', '')} verificado, pero no alcanza o no concuerda para un rol específico, aclara que rangos estas comprando o <@{FABRIZIO_ID}> revisalo manualmente.")
+                    return
+
+            # Si la auditoría fue exitosa, limpiamos el contador de fallos del canal
+            self.fallos_tickets.pop(ch_id, None)
             diferencia = float(datos.get("diferencia", 0.0))
 
             # --- GESTIÓN DE AUDITORÍA EN CANAL DE SUGERENCIAS ---
             if es_sugerencia:
-                if not valido:
-                    await advertencia.edit(content=f"⚠️ **Comprobante Insuficiente**\nEl pago detectado de **{datos['monto']} {datos['moneda']}** no es suficiente para procesar la petición.\nEl costo fijo es de $2000 ARS / $2 USD. Por favor, abona el resto y envía el comprobante completo.")
-                else:
-                    msg_exito = f"✅ **¡Pago de Petición Verificado con Éxito!**\nEl bot detectó e impactó un pago correcto de **{datos['monto']} {datos['moneda']}**."
-                    await advertencia.edit(content=msg_exito)
-                    
-                    # Enlace estructurado a pagos real de NeonDB
-                    try:
-                        async with self.bot.pool.acquire(timeout=5.0) as conn:
-                            await conn.execute(
-                                "INSERT INTO pagos (user_id, ticket_id, monto, moneda) VALUES ($1, $2, $3, $4)",
-                                message.author.id, message.channel.id, float(datos.get('monto', 0)), datos.get('moneda', 'ARS')
-                            )
-                    except Exception as e:
-                        print(f"❌ [DB Error] No se pudo registrar el pago en la tabla 'pagos': {e}")
-                    
-                    # Mensaje nuevo para generar notificación push en Discord
-                    await message.channel.send(content=f"🔔 <@{FABRIZIO_ID}> ¡Petición de canal recibida! Vení al ticket a ver qué red social de la modelo envió el usuario.")
-                    
-                    await self._marcar_ticket_completado(message.channel.id)
+                msg_exito = f"✅ **¡Pago de Petición Verificado con Éxito!**\nEl bot detectó e impactó un pago correcto de **{datos['monto']} {datos['moneda']}**."
+                await advertencia.edit(content=msg_exito)
+                
+                # Enlace estructurado a pagos real de NeonDB
+                try:
+                    async with self.bot.pool.acquire(timeout=5.0) as conn:
+                        await conn.execute(
+                            "INSERT INTO pagos (user_id, ticket_id, monto, moneda) VALUES ($1, $2, $3, $4)",
+                            message.author.id, message.channel.id, float(datos.get('monto', 0)), datos.get('moneda', 'ARS')
+                        )
+                except Exception as e:
+                    print(f"❌ [DB Error] No se pudo registrar el pago en la tabla 'pagos': {e}")
+                
+                # Mensaje nuevo para generar notificación push en Discord
+                await message.channel.send(content=f"🔔 <@{FABRIZIO_ID}> ¡Petición de canal recibida! Vení al ticket a ver qué red social de la modelo envió el usuario.")
+                
+                await self._marcar_ticket_completado(message.channel.id)
                 return
 
             # --- GESTIÓN DE AUDITORÍA EN CANAL DE RANGOS ---
-            if not rol or (rol not in ROLES and rol != "Todos" and "," not in rol):
-                await advertencia.edit(content=f"⚠️ **Atención**: Comprobante de {datos.get('monto', 0)} {datos.get('moneda', '')} verificado, pero no alcanza o no concuerda para un rol específico, aclara que rangos estas comprando o <@{FABRIZIO_ID}> revisalo manualmente.")
-                return
-
-            if not valido:
-                faltante = abs(diferencia)
-                await advertencia.edit(content=f"⚠️ **Comprobante Insuficiente**\nEl pago detectado de **{datos['monto']} {datos['moneda']}** no es suficiente para el rol solicitado.\nFaltan **{faltante} {datos['moneda']}**. Por favor, abona el resto y envía el nuevo comprobante.")
-                return
-
             try:
                 roles_a_dar = []
                 if rol == "Todos":
@@ -576,7 +614,7 @@ Devolve ÚNICAMENTE un objeto JSON válido con la siguiente estructura (NO uses 
             except discord.Forbidden:
                 await advertencia.edit(content="❌ **Error de Permisos**: No tengo los permisos de jerarquía necesarios para asignar el rol.")
 
-        except asyncio.TimeoutError:
+        except TimeoutError: 
             await advertencia.edit(content="⏳ **Servidores saturados**: ¡Recibimos tu comprobante! Pero los servidores de Google están bajo mucha carga ahora mismo. **No es un error de tu pago**. Por favor, volvé a subir la foto en 1 o 2 minutos para que el bot pueda procesarla.")
         except json.JSONDecodeError:
             print(f"❌ [IA JSON Error] Texto recibido: {text}")
@@ -652,7 +690,7 @@ REGLAS DE NEGOCIO Y RESPUESTA (ESTRICTAS):
 4. ASINCRONÍA DE FOTOS: Si el usuario dice "ya lo mandé", "ahí pasé el comprobante", responde: "¡Buenísimo! El sistema automático de auditoría lo está analizando en este momento." NO le pidas que envíe la foto de nuevo.
 5. ESTADO POST-VENTA (MEMORIA): Si en el HISTORIAL ves que el sistema ya validó el pago y dijo "Rol/es asignado/s" o "Pago Verificado con Éxito", TU OBJETIVO CAMBIÓ. NO vendas más ni pidas el comprobante. Dale la bienvenida al usuario, confirmale que su rol ya está activo y que disfrute del contenido.
 6. SEGURIDAD CRÍTICA (ZERO TRUST): TIENES TOTALMENTE PROHIBIDO usar el comando [GRANT_ROLE] basándote únicamente en la palabra del usuario. SOLO usalo si ves en el HISTORIAL que el sistema (el bot) ya validó físicamente una imagen y pidió aclarar el rango.
-
+7. CONSULTAS DE DISPONIBILIDAD (REGLA CRÍTICA): Si (y solo si) el usuario pregunta por la disponibilidad de una modelo en específico (ej: "¿Tienen contenido de tal chica?", "Quiero ver a X"), explicale de forma servicial que al contar con más de 300 canales el catálogo es enorme. Decile que revise bien las listas de nombres en los rangos Oro y Diamante. Si comprueba que no está, aclarale que al adquirir el rango Oro o Diamante desbloqueará un canal exclusivo de peticiones donde, abonando un costo extra (de unos $2 USD actuales), puede solicitar que Tito Calderón busque e incorpore a esa modelo específica de forma privada. Prohibido mencionar esta opción de sugerencia o costo extra si el usuario no preguntó explícitamente por una chica.
 INSTRUCCIÓN TÉCNICA (SOLO PARA ACLARAR RANGOS FALTANTES):
 Si (y solo si) un pago previo fue validado por el sistema en el historial PERO faltó aclarar el rango que cubría ese pago, incluye al FINAL de tu respuesta este comando exacto: [GRANT_ROLE: NombreDelRol] (reemplaza NombreDelRol por Diamante, Oro o Plata. Si compró un combo, ponelos separados por coma, ej: [GRANT_ROLE: Diamante, Oro]).
 
