@@ -739,11 +739,22 @@ Consulta actual del usuario: "{message.content}"
                 for record in records_comp:
                     channel_id = int(record['channel_id'])
                     channel = self.bot.get_channel(channel_id)
+                    
+                    # Fallback robusto por si el canal no está en la memoria RAM del bot
+                    if not channel:
+                        try:
+                            channel = await self.bot.fetch_channel(channel_id)
+                        except discord.NotFound:
+                            # Si el canal ya no existe en Discord, limpiamos la DB de una
+                            await conn.execute("DELETE FROM tickets WHERE channel_id = $1", channel_id)
+                            continue
+                        except Exception:
+                            channel = None
+
                     if channel:
-                        # VERIFICACIÓN QUIRÚRGICA: Si es de la categoría o nombre de sugerencias, lo dejamos vivo
-                        es_sug = (channel.category_id == ID_CATEGORIA_SUGERENCIAS) or channel.name.startswith("sug-")
+                        es_sug = (channel.category_id == ID_CATEGORIA_SUGERENCIAS) or (hasattr(channel, 'name') and channel.name.startswith("sug-"))
                         if es_sug:
-                            continue # Salta este ticket, no lo borra de Discord ni de la BD
+                            continue # Escudo: Si es sugerencia pagada/completada, no se borra jamás
                         
                         try:
                             await channel.delete(reason="Limpieza automática: 24hs tras ticket de rango completado.")
@@ -752,14 +763,24 @@ Consulta actual del usuario: "{message.content}"
                             pass
                         except discord.HTTPException:
                             pass
-                    # Solo se ejecuta si no fue una sugerencia pagada
+                    
                     await conn.execute("DELETE FROM tickets WHERE channel_id = $1", channel_id)
 
-                # 2. Limpiar abandonados (3hs sin mensaje inicial - Aplica a TODOS)
+                # 2. Limpiar abandonados (3hs sin mensaje inicial - Aplica a TODOS si nadie habló)
                 records_aban3h = await conn.fetch(query_abandonados_3h)
                 for record in records_aban3h:
                     channel_id = int(record['channel_id'])
                     channel = self.bot.get_channel(channel_id)
+                    
+                    if not channel:
+                        try:
+                            channel = await self.bot.fetch_channel(channel_id)
+                        except discord.NotFound:
+                            await conn.execute("DELETE FROM tickets WHERE channel_id = $1", channel_id)
+                            continue
+                        except Exception:
+                            channel = None
+
                     if channel:
                         try: 
                             await channel.delete(reason="Auto-Close: 3 horas de inactividad total desde creación.")
@@ -770,12 +791,27 @@ Consulta actual del usuario: "{message.content}"
                             pass
                     await conn.execute("DELETE FROM tickets WHERE channel_id = $1", channel_id)
                     
-                # 3. Limpiar abandonados (24hs inactividad luego de hablar sin pagar - Aplica a TODOS)
+                # 3. Limpiar abandonados con habla (24hs inactividad - ¡AHORA CORREGIDO PARA SUGERENCIAS!)
                 records_aban24h = await conn.fetch(query_abandonados_24h)
                 for record in records_aban24h:
                     channel_id = int(record['channel_id'])
                     channel = self.bot.get_channel(channel_id)
+                    
+                    if not channel:
+                        try:
+                            channel = await self.bot.fetch_channel(channel_id)
+                        except discord.NotFound:
+                            await conn.execute("DELETE FROM tickets WHERE channel_id = $1", channel_id)
+                            continue
+                        except Exception:
+                            channel = None
+
                     if channel:
+                        # BLINDAJE INYECTADO: Verificamos si pertenece al nicho de las chicas
+                        es_sug = (channel.category_id == ID_CATEGORIA_SUGERENCIAS) or (hasattr(channel, 'name') and channel.name.startswith("sug-"))
+                        if es_sug:
+                            continue # Escudo definitivo: Si el cliente habló en una sugerencia, queda vivo para siempre
+                        
                         try: 
                             await channel.delete(reason="Auto-Close: 24 horas de inactividad después de hablar.")
                             print(f"🗑️ [Auto-Close] Ticket {channel_id} borrado por 24hs inactividad posterior.")
